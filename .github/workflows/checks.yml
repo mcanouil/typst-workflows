@@ -1,0 +1,128 @@
+name: Checks
+
+on:
+  workflow_call:
+    inputs:
+      needs-lua:
+        type: boolean
+        default: false
+      needs-quarto:
+        type: boolean
+        default: false
+      needs-imagemagick:
+        type: boolean
+        default: false
+      check-args:
+        type: string
+        default: ""
+      failure-artifacts:
+        type: string
+        default: ""
+      shellcheck-paths:
+        type: string
+        default: "tools/*.sh .github/scripts/*.sh docs/_scripts/*.sh"
+      shfmt-paths:
+        type: string
+        default: "tools/*.sh .github/scripts/*.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: Run tools/check.sh
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Typst
+        uses: mcanouil/typst-workflows/actions/setup-typst@v1
+
+      - name: Set up Lua
+        if: ${{ inputs.needs-lua }}
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+
+      - name: Set up Quarto
+        if: ${{ inputs.needs-quarto }}
+        uses: quarto-dev/quarto-actions/setup@v2.2.0
+        with:
+          version: release
+
+      - name: Set up ImageMagick
+        if: ${{ inputs.needs-imagemagick }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v compare >/dev/null; then
+            compare -version | head -1
+            exit 0
+          fi
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends imagemagick
+
+      - name: Run the suite
+        uses: mcanouil/typst-workflows/actions/run-logged@v1
+        env:
+          CHECK_ARGS: ${{ inputs.check-args }}
+        with:
+          title: Suite
+          command: tools/check.sh ${CHECK_ARGS}
+
+      - name: Upload failure artefacts
+        if: ${{ failure() && inputs.failure-artifacts != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: check-failures
+          path: ${{ inputs.failure-artifacts }}
+          if-no-files-found: ignore
+          retention-days: 14
+
+  package:
+    name: Rehearse the release
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Typst
+        uses: mcanouil/typst-workflows/actions/setup-typst@v1
+
+      - name: Set up Lua
+        if: ${{ inputs.needs-lua }}
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+
+      - name: Set up typst-package-check
+        uses: mcanouil/typst-workflows/actions/setup-package-check@v1
+
+      - name: Run tools/dry-release.sh
+        uses: mcanouil/typst-workflows/actions/run-logged@v1
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}
+          STAGE_ROOT: ${{ runner.temp }}/stage
+        with:
+          title: Release rehearsal
+          command: tools/dry-release.sh
+
+  lint:
+    name: Lint shell scripts
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Lint
+        uses: mcanouil/typst-workflows/actions/lint-shell@v1
+        with:
+          shellcheck-paths: ${{ inputs.shellcheck-paths }}
+          shfmt-paths: ${{ inputs.shfmt-paths }}

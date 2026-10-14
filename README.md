@@ -16,7 +16,7 @@ A package that calls these workflows provides the files below.
 | `tools/check.sh` | The full local suite. It exits 0 when every check passes and 1 otherwise. It accepts extra arguments. |
 | `tools/dry-release.sh` | Stages the package, installs it as `@preview/<name>:<version>`, compiles against that copy, and lints the payload with `typst-package-check`. It honours `XDG_DATA_HOME` and `STAGE_ROOT`. |
 | `.editorconfig` | The indentation that shfmt reads. Keep it out of the published package with the `exclude` list in `typst.toml`. |
-| `docs/_quarto.yml` | A `website.site-url`, which sets the URLs in `versions.json`. |
+| `docs/_quarto.yml` | A `website.site-url`, which sets the URLs in `versions.json`. Write the URL itself there; an alias such as `*site-url` belongs on the other keys that repeat it. |
 | Quarto profiles | `release`, `dev` and `no-release` under `docs/`. The `dev` profile renders into `_site/dev` and points `site-url` at `/dev`. |
 
 ## Checks

@@ -7,11 +7,15 @@ usage='usage: docs-matrix.sh <quarto-yml> [latest-tag]'
 quarto_yml="${1:?${usage}}"
 tag="${2:-}"
 
-# The value after `site-url:`, without a YAML anchor (`&name`) or quotes.
+# The `site-url:` under the top-level `website:` key, without a YAML anchor
+# (`&name`), an inline comment, or quotes. Other keys may hold a `site-url` too,
+# such as an extension option that repeats it through an alias.
 site_url="$(awk '
-  /^[[:space:]]*site-url:/ {
+  /^[^[:space:]#]/ { in_website = ($0 ~ /^website:/) }
+  in_website && /^[[:space:]]+site-url:/ {
     sub(/^[[:space:]]*site-url:[[:space:]]*/, "")
     sub(/^&[^[:space:]]+[[:space:]]+/, "")
+    sub(/[[:space:]]+#.*$/, "")
     gsub(/["\047]/, "")
     sub(/[[:space:]]+$/, "")
     print
@@ -20,6 +24,11 @@ site_url="$(awk '
 ' "${quarto_yml}")"
 if [[ -z "${site_url}" ]]; then
   printf 'site-url not found in %s\n' "${quarto_yml}" >&2
+  exit 1
+fi
+if [[ "${site_url}" == \** ]]; then
+  printf 'website.site-url in %s is an alias (%s); write the URL there and the alias elsewhere\n' \
+    "${quarto_yml}" "${site_url}" >&2
   exit 1
 fi
 site_url="${site_url%/}"

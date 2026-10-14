@@ -115,6 +115,15 @@ jobs:
         with:
           luaVersion: "5.4"
 
+      # Computed once, so the pages, which read it with `{{< env DEV_VERSION >}}`,
+      # and the development archive carry the same date. A date is a valid
+      # three-integer Typst version and marks a snapshot.
+      - name: Resolve the development version
+        shell: bash
+        run: echo "DEV_VERSION=$(date -u +%Y.%-m.%-d)" >> "${GITHUB_ENV}"
+
+      # Quarto writes `?env:NAME` for an `{{< env NAME >}}` that is not set, and
+      # renders the page anyway, so that is checked here as well.
       - name: Render the site
         shell: bash
         env:
@@ -132,8 +141,12 @@ jobs:
             echo "${failed}"
             exit 1
           fi
+          if unset_env="$(grep -rlE '\?env:[A-Za-z_]' docs/_site --include='*.html')"; then
+            echo "::error::Pages read an environment variable that is not set:"
+            echo "${unset_env}"
+            exit 1
+          fi
 
-      # A date is a valid three-integer Typst version and marks a snapshot.
       - name: Package the development version
         if: ${{ inputs.dev-archive && matrix.assets_dir != '' }}
         shell: bash
@@ -142,7 +155,7 @@ jobs:
         run: |
           set -euo pipefail
           name="$(awk -F'"' '/^name[[:space:]]*=/ { print $2; exit }' typst.toml)"
-          tools/package.sh archive "${ASSETS_DIR}" "${name}" "$(date -u +%Y.%-m.%-d)"
+          tools/package.sh archive "${ASSETS_DIR}" "${name}" "${DEV_VERSION}"
 
       - name: Upload the site
         if: ${{ github.event_name != 'pull_request' }}

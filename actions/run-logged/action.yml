@@ -1,0 +1,22 @@
+name: Run a logged command
+description: Run a command, keep its output, and write its status and failure tail to the step summary.
+
+inputs:
+  title:
+    description: "Heading of the summary section."
+    required: true
+  command:
+    description: "Bash command to run. Environment variables of the calling step are available."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: ${{ inputs.title }}
+      shell: bash
+      env:
+        TITLE: ${{ inputs.title }}
+        COMMAND: ${{ inputs.command }}
+      run: |
+        set -euo pipefail
+        "${GITHUB_ACTION_PATH}/run-logged.sh" "${TITLE}" "${RUNNER_TEMP}/run-logged.log" -- bash -c "${COMMAND}"

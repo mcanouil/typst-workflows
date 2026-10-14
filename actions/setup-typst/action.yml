@@ -1,0 +1,34 @@
+name: Set up Typst from typst.toml
+description: Read the compiler version that typst.toml pins, and install that Typst.
+
+inputs:
+  manifest:
+    description: "Path to the typst.toml manifest."
+    required: false
+    default: "typst.toml"
+
+outputs:
+  version:
+    description: "The installed Typst version, without a leading v."
+    value: ${{ steps.read.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read the compiler version
+      id: read
+      shell: bash
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        set -euo pipefail
+        if ! version="$("${GITHUB_ACTION_PATH}/read-compiler.sh" "${MANIFEST}" 2>"${RUNNER_TEMP}/read-compiler.err")"; then
+          echo "::error file=${MANIFEST}::$(cat "${RUNNER_TEMP}/read-compiler.err")"
+          exit 1
+        fi
+        echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+    - name: Install Typst
+      uses: typst-community/setup-typst@v5
+      with:
+        typst-version: ${{ steps.read.outputs.version }}

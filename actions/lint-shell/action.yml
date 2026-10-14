@@ -1,0 +1,31 @@
+name: Lint shell scripts
+description: Run shellcheck and shfmt, with the indentation from .editorconfig.
+
+inputs:
+  shellcheck-paths:
+    description: "Space-separated globs for shellcheck."
+    required: false
+    default: "tools/*.sh .github/scripts/*.sh docs/_scripts/*.sh"
+  shfmt-paths:
+    description: "Space-separated globs for shfmt."
+    required: false
+    default: "tools/*.sh .github/scripts/*.sh"
+
+runs:
+  using: composite
+  steps:
+    - name: Install shfmt
+      shell: bash
+      run: |
+        set -euo pipefail
+        go install mvdan.cc/sh/v3/cmd/shfmt@v3.14.1
+        printf '%s/bin\n' "$(go env GOPATH)" >> "${GITHUB_PATH}"
+
+    - name: Run shellcheck and shfmt
+      shell: bash
+      env:
+        SHELLCHECK_PATHS: ${{ inputs.shellcheck-paths }}
+        SHFMT_PATHS: ${{ inputs.shfmt-paths }}
+      run: |
+        set -euo pipefail
+        "${GITHUB_ACTION_PATH}/lint-shell.sh" "${SHELLCHECK_PATHS}" "${SHFMT_PATHS}"

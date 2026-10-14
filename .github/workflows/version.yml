@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pinned="$(grep -oE 'mcanouil/typst-workflows/[^ "]+@[^ "]+' README.md \
+          pinned="$(grep -oE "${GITHUB_REPOSITORY}/[^ \"]+@[^ \"]+" README.md \
             | sed 's/.*@//' | sort -u || true)"
           if [[ -z "${pinned}" ]]; then
             echo "::error::No typst-workflows reference found in README.md; expected the usage examples to pin ${MAJOR}."

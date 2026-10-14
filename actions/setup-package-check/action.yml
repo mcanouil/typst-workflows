@@ -1,0 +1,40 @@
+name: Set up typst-package-check
+description: Install typst-package-check, cached by the upstream revision.
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the upstream revision
+      id: rev
+      shell: bash
+      run: |
+        set -euo pipefail
+        rev="$(git ls-remote https://github.com/typst/package-check HEAD | cut -f1)"
+        [[ -n "${rev}" ]] || {
+          echo "::error::could not resolve typst/package-check HEAD; retry the job."
+          exit 1
+        }
+        echo "rev=${rev}" >> "${GITHUB_OUTPUT}"
+
+    # cargo install rebuilds from scratch on every run, so the binary is cached.
+    - name: Restore the binary
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: ~/.cargo/bin/typst-package-check
+        key: typst-package-check-${{ steps.rev.outputs.rev }}
+
+    - name: Install the Rust toolchain
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: Swatinem/rust-cache@v2
+
+    - name: Install typst-package-check
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        REV: ${{ steps.rev.outputs.rev }}
+      run: cargo install --git https://github.com/typst/package-check --rev "${REV}" --locked

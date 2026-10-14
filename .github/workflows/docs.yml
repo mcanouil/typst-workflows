@@ -1,0 +1,227 @@
+name: Docs
+
+# Renders the latest version tag at the site root and the triggering ref at
+# /dev/, or the triggering ref alone at the root before the first tag. A pull
+# request builds every site and deploys nothing.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+      needs-lua:
+        type: boolean
+        default: false
+      figure-cache:
+        type: string
+        default: ""
+      dev-archive:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve build matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Skips the version bump of the current release flow: the Release workflow
+    # deploys the docs itself, so its push to main would deploy twice.
+    if: >-
+      ${{ (github.event_name != 'push'
+            || !contains(github.event.head_commit.message, 'ci: bump version to'))
+        && github.head_ref != 'ci/bump-version'
+        && github.event.pull_request.draft != true }}
+    outputs:
+      tag: ${{ steps.matrix.outputs.tag }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      versions: ${{ steps.matrix.outputs.versions }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Build the matrix
+        id: matrix
+        uses: mcanouil/typst-workflows/actions/docs-matrix@v1
+
+  build:
+    name: Render ${{ matrix.profile }} site
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      QUARTO_TYPST: typst
+      VERSION: ${{ matrix.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      # The release site renders wholly from the tag: pages, site configuration
+      # and Typst sources move together.
+      - name: Check out the release ref
+        if: ${{ matrix.ref != '' }}
+        shell: bash
+        env:
+          REF: ${{ matrix.ref }}
+        run: |
+          set -euo pipefail
+          git checkout --force "${REF}"
+          head="$(git rev-parse HEAD)"
+          want="$(git rev-parse "${REF}^{commit}")"
+          [[ "${head}" == "${want}" ]] || {
+            echo "::error::working tree is at ${head}, expected ${want}"
+            exit 1
+          }
+
+      - name: Resolve the rendered commit
+        id: rendered
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      # Read after the ref switch, so each site compiles with its own pin.
+      - name: Set up Typst
+        id: typst
+        uses: mcanouil/typst-workflows/actions/setup-typst@v1
+
+      - name: Restore the figure cache
+        if: ${{ inputs.figure-cache != '' }}
+        uses: actions/cache@v6
+        with:
+          path: ${{ inputs.figure-cache }}
+          key: typst-render-v1-${{ matrix.version }}-${{ steps.typst.outputs.version }}-${{ steps.rendered.outputs.sha }}
+          restore-keys: |
+            typst-render-v1-${{ matrix.version }}-${{ steps.typst.outputs.version }}-
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: release
+
+      - name: Set up Lua
+        if: ${{ inputs.needs-lua }}
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+
+      # Computed once, so the pages, which read it with `{{< env DEV_VERSION >}}`,
+      # and the development archive carry the same date. A date is a valid
+      # three-integer Typst version and marks a snapshot.
+      - name: Resolve the development version
+        shell: bash
+        run: echo "DEV_VERSION=$(date -u +%Y.%-m.%-d)" >> "${GITHUB_ENV}"
+
+      # Quarto writes `?env:NAME` for an `{{< env NAME >}}` that is not set, and
+      # renders the page anyway, so that is checked here as well.
+      - name: Render the site
+        shell: bash
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          quarto render docs --profile "${PROFILE}"
+          pages="$(find docs/_site -name '*.html' | wc -l)"
+          if [[ "${pages}" -eq 0 ]]; then
+            echo "::error::No rendered page under docs/_site."
+            exit 1
+          fi
+          if failed="$(grep -rl 'typst-render-error' docs/_site --include='*.html')"; then
+            echo "::error::Typst blocks failed to compile on these pages:"
+            echo "${failed}"
+            exit 1
+          fi
+          if unset_env="$(grep -rlE '\?env:[A-Za-z_]' docs/_site --include='*.html')"; then
+            echo "::error::Pages read an environment variable that is not set:"
+            echo "${unset_env}"
+            exit 1
+          fi
+
+      - name: Package the development version
+        if: ${{ inputs.dev-archive && matrix.assets_dir != '' }}
+        shell: bash
+        env:
+          ASSETS_DIR: ${{ matrix.assets_dir }}
+        run: |
+          set -euo pipefail
+          name="$(awk -F'"' '/^name[[:space:]]*=/ { print $2; exit }' typst.toml)"
+          tools/package.sh archive "${ASSETS_DIR}" "${name}" "${DEV_VERSION}"
+
+      - name: Upload the site
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-${{ matrix.profile }}
+          path: docs/_site
+          retention-days: 1
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [resolve, build]
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download the sites
+        uses: actions/download-artifact@v8
+        with:
+          pattern: site-*
+          merge-multiple: true
+          path: docs/_site
+
+      # Read by the version switcher of every site, so a new version is listed
+      # on the deployed sites without rebuilding them.
+      - name: Prepare the site
+        shell: bash
+        env:
+          VERSIONS: ${{ needs.resolve.outputs.versions }}
+        run: |
+          set -euo pipefail
+          touch docs/_site/.nojekyll
+          jq -e . <<<"${VERSIONS}" > docs/_site/versions.json
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload the Pages artefact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/_site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+      - name: Summary
+        shell: bash
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          {
+            echo "## Documentation deploy"
+            echo ""
+            if [[ -n "${TAG}" ]]; then
+              echo "- Root: \`${TAG}\` at ${PAGE_URL}"
+              echo "- Development: ${PAGE_URL}dev/"
+            else
+              echo "- Root: development version, no tag yet, at ${PAGE_URL}"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"

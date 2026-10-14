@@ -16,6 +16,8 @@ A package that calls these workflows provides the files below.
 | `tools/check.sh` | The full local suite. It exits 0 when every check passes and 1 otherwise. It accepts extra arguments. |
 | `tools/dry-release.sh` | Stages the package, installs it as `@preview/<name>:<version>`, compiles against that copy, and lints the payload with `typst-package-check`. It honours `XDG_DATA_HOME` and `STAGE_ROOT`. |
 | `.editorconfig` | The indentation that shfmt reads. Keep it out of the published package with the `exclude` list in `typst.toml`. |
+| `docs/_quarto.yml` | A `website.site-url`, which sets the URLs in `versions.json`. Write the URL itself there; an alias such as `*site-url` belongs on the other keys that repeat it. |
+| Quarto profiles | `release`, `dev` and `no-release` under `docs/`. The `dev` profile renders into `_site/dev` and points `site-url` at `/dev`. |
 
 ## Checks
 
@@ -70,6 +72,62 @@ jobs:
 The concurrency group cancels a superseded run on a pull request.
 On `main`, every commit gets a group of its own, so each one keeps its result.
 
+## Documentation
+
+`.github/workflows/docs.yml` publishes the site under `docs/` to GitHub Pages.
+The latest version tag renders at the site root, and the calling ref renders at `/dev/`.
+Before the first tag, the calling ref renders alone at the root with the `no-release` profile.
+Each site checks out its own ref, so it compiles with the Typst version that its own `typst.toml` pins.
+
+A pull request builds every site and deploys nothing, so a broken page shows up before it lands.
+The deploy writes `versions.json` at the site root, which a version switcher can read on every site.
+
+| Input | Type | Default | Use |
+| --- | --- | --- | --- |
+| `ref` | string | `""` | The commit or ref to resolve the tag from and to render as `dev`. Empty means the calling ref. |
+| `needs-lua` | boolean | `false` | Installs Lua 5.4 for pre-render scripts and the development archive. |
+| `figure-cache` | string | `""` | The typst-render cache to restore and save, such as `docs/.quarto/typst-render`. |
+| `dev-archive` | boolean | `false` | Writes a dated `tools/package.sh archive` into the development site. |
+
+Here's a minimal caller:
+
+```yaml
+name: Docs
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches:
+      - main
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('docs-pr-{0}', github.ref) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
+jobs:
+  docs:
+    uses: mcanouil/typst-workflows/.github/workflows/docs.yml@v1
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    with:
+      ref: ${{ inputs.ref }}
+```
+
+GitHub Pages takes one deployment at a time, so every deploy shares the `pages` group.
+A push cancels the older run, because the newer one renders the same site from fresher sources.
+The `workflow_call` trigger lets a release workflow deploy the docs from the commit it just tagged.
+
 ## Actions
 
 The workflows are built from these composite actions, which you can also use on their own:
@@ -78,6 +136,7 @@ The workflows are built from these composite actions, which you can also use on 
 - `actions/run-logged` runs a command and writes its status, and the end of its output on failure, to the step summary.
 - `actions/lint-shell` installs shfmt and runs shellcheck and shfmt.
 - `actions/setup-package-check` installs `typst-package-check`, cached by the upstream revision.
+- `actions/docs-matrix` builds the docs render matrix and the `versions.json` list from the latest tag and `site-url`.
 
 ## Versioning
 

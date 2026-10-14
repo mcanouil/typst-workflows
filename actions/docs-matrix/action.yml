@@ -1,0 +1,33 @@
+name: Docs render matrix
+description: Build the docs render matrix and versions.json from the latest version tag and the site URL.
+
+inputs:
+  quarto-yml:
+    description: "Path to the Quarto project configuration."
+    required: false
+    default: "docs/_quarto.yml"
+
+outputs:
+  tag:
+    description: "The latest version tag, or empty when there is none."
+    value: ${{ steps.matrix.outputs.tag }}
+  matrix:
+    description: "JSON matrix with one entry per profile."
+    value: ${{ steps.matrix.outputs.matrix }}
+  versions:
+    description: "JSON list written to versions.json at the site root."
+    value: ${{ steps.matrix.outputs.versions }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build the matrix
+      id: matrix
+      shell: bash
+      env:
+        QUARTO_YML: ${{ inputs.quarto-yml }}
+      run: |
+        set -euo pipefail
+        tag="$(git tag -l --sort=-v:refname '[0-9]*' | head -n 1)"
+        echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+        "${GITHUB_ACTION_PATH}/docs-matrix.sh" "${QUARTO_YML}" "${tag}" >> "${GITHUB_OUTPUT}"

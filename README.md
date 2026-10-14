@@ -141,8 +141,14 @@ The workflows are built from these composite actions, which you can also use on 
 ## Versioning
 
 Call everything with `@v1`.
-The `v1` tag moves to each compatible release, and every release also gets a fixed `v1.x.y` tag if you'd rather pin one.
+Each release publishes three tags: `vX.Y.Z`, which never moves, and `vX.Y` and `vX`, which roll forward on to each new release they cover.
+Pin `v1` to get every compatible release, or a fixed `v1.x.y` if you'd rather choose when to move.
 A change that breaks callers starts `v2`.
+
+Releases are cut by the Version workflow, which you run by hand from `main` with `patch`, `minor` or `major`.
+It works out the next version from the latest tag, tags the commit, moves the rolling tags, and publishes a GitHub Release with generated notes.
+It refuses a major release until the usage examples in this README pin the new major, so that change lands as a pull request first.
+The tags are lightweight on purpose, because GitHub doesn't resolve an annotated tag for a relative workflow reference.
 
 ## Development
 

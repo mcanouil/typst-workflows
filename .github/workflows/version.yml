@@ -1,0 +1,152 @@
+name: Version
+
+# Cuts a release from the default branch: vX.Y.Z, which never moves, and the
+# rolling vX.Y and vX, which callers pin. Run by hand.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        type: choice
+        description: "Version"
+        default: "minor"
+        options:
+          - "patch"
+          - "minor"
+          - "major"
+
+permissions:
+  contents: write
+
+# Two runs at once would read the same latest tag and race over the rolling
+# ones. Queue rather than cancel: a cancelled run can leave vX pushed while
+# vX.Y.Z is not.
+concurrency:
+  group: version
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Cut the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Refuse to tag anything but the default branch
+        if: ${{ github.ref_name != github.event.repository.default_branch }}
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          echo "::error::Releases are cut from ${DEFAULT_BRANCH}, not ${REF_NAME}."
+          exit 1
+
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_KEY }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # The whole history and every tag, since the version to cut is derived
+          # from the latest one.
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Resolve the version to cut
+        id: resolve-version
+        env:
+          BUMP: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+          .github/scripts/next-version.sh "${BUMP}" "${latest}" > "${RUNNER_TEMP}/version.txt"
+          version="$(sed -n 's/^version=//p' "${RUNNER_TEMP}/version.txt")"
+          if git rev-parse -q --verify "refs/tags/${version}" > /dev/null; then
+            echo "::error::${version} already exists."
+            exit 1
+          fi
+          echo "Cutting ${version}."
+          cat "${RUNNER_TEMP}/version.txt" >> "${GITHUB_OUTPUT}"
+
+      # The README tells callers which major to pin, and this workflow does not
+      # push to the default branch. A major cut therefore lands its README change
+      # as an ordinary pull request first, and this step makes forgetting that
+      # impossible.
+      - name: Check the README pins the major being cut
+        env:
+          MAJOR: ${{ steps.resolve-version.outputs.major }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pinned="$(grep -oE "${GITHUB_REPOSITORY}/[^ \"]+@[^ \"]+" README.md \
+            | sed 's/.*@//' | sort -u || true)"
+          if [[ -z "${pinned}" ]]; then
+            echo "::error::No typst-workflows reference found in README.md; expected the usage examples to pin ${MAJOR}."
+            exit 1
+          fi
+          if [[ "${pinned}" != "${MAJOR}" ]]; then
+            echo "::error::README.md pins $(tr '\n' ' ' <<<"${pinned}")but ${MAJOR} is being cut. Land a pull request repointing the usage examples at ${MAJOR}, then dispatch this workflow again."
+            exit 1
+          fi
+          echo "README.md pins ${MAJOR}."
+
+      - name: Tag the release
+        env:
+          VERSION: ${{ steps.resolve-version.outputs.version }}
+          MAJOR: ${{ steps.resolve-version.outputs.major }}
+          MINOR: ${{ steps.resolve-version.outputs.minor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Lightweight, deliberately. GitHub does not peel an annotated tag to
+          # its commit when it resolves a relative workflow reference, so a
+          # caller pinning one can fail before a job starts. `tag.gpgSign` is
+          # spelled out because it would otherwise make these annotated.
+          git -c tag.gpgSign=false tag "${VERSION}"
+          # The rolling tags are what callers pin, so they move on to this
+          # commit. Only the exact version is immutable.
+          git -c tag.gpgSign=false tag -f "${MINOR}"
+          git -c tag.gpgSign=false tag -f "${MAJOR}"
+          git push origin "${VERSION}"
+          git push --force origin "${MINOR}" "${MAJOR}"
+          echo "Tagged ${VERSION}, and moved ${MINOR} and ${MAJOR} on to it."
+
+      # Only the exact version carries a release. The rolling tags stay bare,
+      # which keeps them movable whatever the release immutability setting is.
+      - name: Release on GitHub
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.resolve-version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${VERSION}" \
+            --title "${VERSION}" \
+            --generate-notes \
+            --latest \
+            --verify-tag
+
+      - name: Summary
+        env:
+          VERSION: ${{ steps.resolve-version.outputs.version }}
+          MAJOR: ${{ steps.resolve-version.outputs.major }}
+          MINOR: ${{ steps.resolve-version.outputs.minor }}
+          PREVIOUS: ${{ steps.resolve-version.outputs.previous }}
+        shell: bash
+        run: |
+          {
+            echo "## Version"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Previous | \`${PREVIOUS}\` |"
+            echo "| Released | \`${VERSION}\` |"
+            echo "| Rolling | \`${MINOR}\`, \`${MAJOR}\` |"
+            echo ""
+            echo "[Release notes](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${VERSION})"
+          } >> "${GITHUB_STEP_SUMMARY}"

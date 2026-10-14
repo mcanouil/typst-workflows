@@ -30,14 +30,20 @@ jobs:
         run: |
           set -euo pipefail
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
-          ./actionlint -color
+          # actionlint 1.7.12 bundles metadata for create-github-app-token@v3 that
+          # predates `client-id`, which v3 declares and prefers over the
+          # deprecated `app-id`. These two flags drop exactly that pair of false
+          # positives.
+          ./actionlint -color \
+            -ignore 'input "client-id" is not defined in action "actions/create-github-app-token@v3"' \
+            -ignore 'missing input "app-id" which is required by action "actions/create-github-app-token@v3"'
 
       # The one local reference: it lints with the action at the commit under test.
       - name: Lint shell scripts
         uses: ./actions/lint-shell
         with:
-          shellcheck-paths: "actions/*/*.sh tests/*.sh"
-          shfmt-paths: "actions/*/*.sh tests/*.sh"
+          shellcheck-paths: "actions/*/*.sh tests/*.sh .github/scripts/*.sh"
+          shfmt-paths: "actions/*/*.sh tests/*.sh .github/scripts/*.sh"
 
       - name: Run the tests
         shell: bash

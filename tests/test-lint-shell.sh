@@ -17,6 +17,11 @@ err="$(cd "${SCRATCH}" && "${script}" "missing/*.sh" "tools/*.sh" 2>&1)" || stat
 assert_status 1 "${status}" "empty shellcheck glob"
 assert_contains "${err}" "nothing matched: missing/*.sh" "empty glob message"
 
+status=0
+err="$(cd "${SCRATCH}" && "${script}" "tools/*.sh missing/*.sh" "tools/*.sh" 2>&1)" || status=$?
+assert_status 1 "${status}" "one empty glob in a list"
+assert_contains "${err}" "nothing matched: missing/*.sh" "one empty glob message"
+
 printf '#!/usr/bin/env bash\nset -euo pipefail\nif true; then\necho "x"\nfi\n' >"${SCRATCH}/tools/bad.sh"
 status=0
 (cd "${SCRATCH}" && "${script}" "tools/*.sh" "tools/*.sh") >/dev/null 2>&1 || status=$?

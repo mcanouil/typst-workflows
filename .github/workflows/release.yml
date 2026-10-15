@@ -13,7 +13,7 @@ on:
         required: true
       targets:
         type: string
-        required: true
+        default: ""
       after-bump:
         type: string
         default: ""
@@ -182,6 +182,7 @@ jobs:
       # bump none on a version with no release finishes a run that pushed the
       # bump and then stopped, so the version must already have its notes.
       - name: Read the release notes
+        id: notes
         if: ${{ inputs.bump == 'none' }}
         uses: mcanouil/release-actions/notes@v1
         with:
@@ -196,6 +197,7 @@ jobs:
           SERVED: ${{ steps.served.outputs.served }}
           NAME: ${{ steps.version.outputs.name }}
           VERSION: ${{ steps.version.outputs.version }}
+          NOTES: ${{ steps.notes.outputs.body-file }}
         run: |
           set -euo pipefail
           if [[ "${BUMP}" != "none" && "${STATE}" != "none" ]]; then
@@ -211,10 +213,14 @@ jobs:
               echo "::error::Typst Universe already serves ${NAME}:${VERSION}, so a resubmission would change bytes it has accepted. Run Publish instead."
               exit 1
             fi
-            if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null; then
-              echo "::error::Tag ${VERSION} exists with no published release. Delete the tag, or publish its release by hand, then dispatch again."
+            if [[ ! -s "${NOTES}" ]]; then
+              echo "::error::The ${VERSION} section of CHANGELOG.md is empty. Add the notes under its heading, then dispatch again."
               exit 1
             fi
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null; then
+            echo "::error::Tag ${VERSION} exists with no published release. Delete the tag, or publish its release by hand, then dispatch again."
+            exit 1
           fi
 
   checks:

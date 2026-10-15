@@ -154,8 +154,8 @@ A dry run can start from any branch, while a real release refuses anything but t
 | --- | --- | --- | --- |
 | `bump` | string | | `patch`, `minor`, `major`, or `none` to resubmit the draft. |
 | `dry-run` | boolean | `false` | Rehearses the whole run with no push, no draft and no pull request. |
-| `targets` | string | | YAML list of [release-actions `bump` targets](https://github.com/mcanouil/release-actions#bump) for the files other than `typst.toml`, which the workflow adds itself. Each item starts at column 0. |
-| `after-bump` | string | `""` | A command run after the bump and before the commit, such as `tools/version-check.sh`. The plan job also runs it on its trial bump, so a broken command fails before the checks. A failure stops the run before anything is pushed. |
+| `targets` | string | `""` | YAML list of [release-actions `bump` targets](https://github.com/mcanouil/release-actions#bump) for the files other than `typst.toml`, which the workflow adds itself. Each item starts at column 0. |
+| `after-bump` | string | `""` | A command run after the bump and before the commit, such as `tools/version-check.sh`. The plan job also runs it on its trial bump, so a broken command fails before the checks. A failure stops the run before anything is pushed. It may change tracked files, which the bump commit includes; files it creates are not committed. |
 | `needs-lua`, `needs-quarto`, `needs-imagemagick`, `check-args`, `failure-artifacts`, `shellcheck-paths`, `shfmt-paths` | | as in `checks.yml` | Passed on to the checks. |
 | `universe-fork` | string | `typst-universe-packages` | The fork of `typst/packages`, under the same owner. |
 

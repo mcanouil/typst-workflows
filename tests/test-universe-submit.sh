@@ -36,21 +36,27 @@ make_archive() {
 
 printf 'Demo draws things.\n' >"${SCRATCH}/update.md"
 printf 'Fresh draws other things.\n\nName: Fresh is a made-up word.\n' >"${SCRATCH}/new.md"
+printf '### Breaking changes\n\n- feat!: Renamed a thing. (#7)\n' >"${SCRATCH}/notes.md"
 
 submit() {
   "${script}" --fork o/fork --dry-run "$@"
 }
 
-# An update of a package that typst/packages already has.
+# An update of a package that typst/packages already has, with its notes.
 make_archive demo 0.2.0
 out="$(submit --name demo --version 0.2.0 --archive "${SCRATCH}/demo-0.2.0.tar.gz" \
-  --description "${SCRATCH}/update.md" 2>"${SCRATCH}/err")"
+  --description "${SCRATCH}/update.md" --notes "${SCRATCH}/notes.md" 2>"${SCRATCH}/err")"
 err="$(cat "${SCRATCH}/err")"
 assert_eq "branch=demo-0.2.0" "${out}" "update branch"
 assert_contains "${err}" "- [x] an update for a package" "update box"
 assert_contains "${err}" "Description: Demo draws things." "update description"
-assert_contains "${err}" "- Release: https://github.com/o/demo/releases/tag/0.2.0" "release link"
+assert_contains "${err}" $'Changes in 0.2.0:\n\n### Breaking changes\n\n- feat!: Renamed a thing. (#7)' "release notes"
 assert_contains "${err}" "- Homepage: https://o.dev/demo" "homepage link"
+# The GitHub Release is a draft until typst/packages merges, so its page is a 404.
+if [[ "${err}" == *"/releases/tag/"* ]]; then
+  echo "  update body: links the release page, which is a draft until the merge" >&2
+  exit 1
+fi
 assert_contains "${err}" "packages/preview/demo/0.2.0/lib.typ" "staged file"
 if [[ "${err}" == *"Explanation"* ]]; then
   echo "  update body: holds the new-package checklist" >&2

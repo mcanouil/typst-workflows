@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- fix: The Typst Universe job fills the Typst package cache before it lints the archive, so a package with dependencies no longer fails there.
+- fix: The Typst Universe job fills the Typst package cache before it lints the archive, so a package with dependencies no longer fails there. (#9)
 
 ## 2.0.0 (2026-10-15)
 

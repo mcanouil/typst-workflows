@@ -50,7 +50,7 @@ jobs:
 
       - name: Find the release
         id: release
-        uses: mcanouil/typst-workflows/actions/find-release@v1
+        uses: mcanouil/typst-workflows/actions/find-release@v2
         with:
           version: ${{ steps.version.outputs.version }}
           asset: ${{ steps.version.outputs.name }}-${{ steps.version.outputs.version }}.tar.gz
@@ -59,7 +59,7 @@ jobs:
       - name: Ask Typst Universe
         id: served
         if: ${{ steps.release.outputs.state == 'draft' }}
-        uses: mcanouil/typst-workflows/actions/universe-served@v1
+        uses: mcanouil/typst-workflows/actions/universe-served@v2
         with:
           name: ${{ steps.version.outputs.name }}
           version: ${{ steps.version.outputs.version }}

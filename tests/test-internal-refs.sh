@@ -9,8 +9,8 @@ refs="$(grep -rhoE 'mcanouil/typst-workflows/[^ "]+' "${ROOT}/.github/workflows"
   exit 1
 }
 
-bad="$(grep -vE '@v1$' <<<"${refs}" || true)"
-assert_eq "" "${bad}" "internal references that are not @v1"
+bad="$(grep -vE '@v2$' <<<"${refs}" || true)"
+assert_eq "" "${bad}" "internal references that are not @v2"
 
 # A reference to an action that does not exist passes actionlint and fails only
 # when a job sets up, so each one must name a directory with an action.yml.

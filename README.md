@@ -12,11 +12,10 @@ A package that calls these workflows provides the files below.
 
 | File | What the workflows expect |
 | --- | --- |
-| `typst.toml` | A `compiler` key, which sets the Typst version that CI installs. The release also reads `name`, `version`, `repository` and `homepage`. |
+| `typst.toml` | A `compiler` key, which sets the Typst version that CI installs. The release reads `name`, `repository` and `homepage`, and bumps `version`, which is the source of the current version. |
 | `tools/check.sh` | The full local suite. It exits 0 when every check passes and 1 otherwise. It accepts extra arguments. |
 | `tools/dry-release.sh` | Stages the package, installs it as `@preview/<name>:<version>`, compiles against that copy, and lints the payload with `typst-package-check`. It honours `XDG_DATA_HOME` and `STAGE_ROOT`. |
 | `tools/package.sh` | `archive <out>` writes `<name>-<version>.tar.gz` and `<name>-<version>.zip`, each with a single `<name>-<version>/` root. |
-| `tools/bump-version.sh` | `<patch\|minor\|major>` rewrites every file that holds the version and prints the new version, and nothing else, on stdout. It refuses an empty `## Unreleased`. |
 | `CHANGELOG.md` | A `## Unreleased` heading, which the bump turns into `## X.Y.Z (YYYY-MM-DD)`. The release notes are the lines under that heading. |
 | `.github/universe.md` | The paragraph that describes the package in the Typst Universe pull request. A package that isn't on Typst Universe yet also needs a line that starts with `Name:` and explains the name. |
 | `.editorconfig` | The indentation that shfmt reads. Keep it out of the published package with the `exclude` list in `typst.toml`. |
@@ -68,7 +67,7 @@ concurrency:
 
 jobs:
   checks:
-    uses: mcanouil/typst-workflows/.github/workflows/checks.yml@v1
+    uses: mcanouil/typst-workflows/.github/workflows/checks.yml@v2
     with:
       needs-lua: true
 ```
@@ -119,7 +118,7 @@ concurrency:
 
 jobs:
   docs:
-    uses: mcanouil/typst-workflows/.github/workflows/docs.yml@v1
+    uses: mcanouil/typst-workflows/.github/workflows/docs.yml@v2
     permissions:
       contents: read
       pages: write
@@ -139,7 +138,7 @@ It runs four jobs:
 
 - `plan` works out the version and tries the bump, so an empty `## Unreleased` fails in seconds. It also refuses a version that already has a release.
 - `checks` runs `checks.yml` on the dispatched commit.
-- `release` writes the version with `tools/bump-version.sh` and builds the archives at that commit. Only then does it push the commit `ci: bump version to X [skip ci]` straight to the default branch with the GitHub App, and keep the archives in a draft GitHub Release, with the changelog section as its notes.
+- `release` bumps the version with [release-actions](https://github.com/mcanouil/release-actions) `bump`, in `typst.toml` and in each file of `targets`, runs `after-bump`, and builds the archives at that commit. Only then does it push the commit `ci: bump version to X [skip ci]` straight to the default branch with the GitHub App, and keep the archives in a draft GitHub Release, with the changelog section as its notes.
 - `universe` runs on the `typst-universe` environment, so it waits for your approval. It lints the archive of the draft, syncs the fork of `typst/packages`, pushes the package on the branch `<name>-<version>`, and opens the pull request `<name>:<version>`, or reuses the open one. The body lists the changelog section as the changes.
 
 With `bump: none`, the run resubmits the current draft after review feedback on `typst/packages`.
@@ -155,6 +154,8 @@ A dry run can start from any branch, while a real release refuses anything but t
 | --- | --- | --- | --- |
 | `bump` | string | | `patch`, `minor`, `major`, or `none` to resubmit the draft. |
 | `dry-run` | boolean | `false` | Rehearses the whole run with no push, no draft and no pull request. |
+| `targets` | string | | YAML list of [release-actions `bump` targets](https://github.com/mcanouil/release-actions#bump) for the files other than `typst.toml`, which the workflow adds itself. Each item starts at column 0. |
+| `after-bump` | string | `""` | A command run after the bump and before the commit, such as `tools/version-check.sh`. A failure stops the run before anything is pushed. |
 | `needs-lua`, `needs-quarto`, `needs-imagemagick`, `check-args`, `failure-artifacts`, `shellcheck-paths`, `shfmt-paths` | | as in `checks.yml` | Passed on to the checks. |
 | `universe-fork` | string | `typst-universe-packages` | The fork of `typst/packages`, under the same owner. |
 
@@ -183,12 +184,23 @@ concurrency:
 
 jobs:
   release:
-    uses: mcanouil/typst-workflows/.github/workflows/release.yml@v1
+    uses: mcanouil/typst-workflows/.github/workflows/release.yml@v2
     secrets: inherit
     with:
       bump: ${{ inputs.bump }}
       dry-run: ${{ inputs.dry-run }}
+      after-bump: tools/version-check.sh
+      targets: |
+        - file: CITATION.cff
+          pattern: '^version: {version}$'
+        - file: CITATION.cff
+          pattern: '^date-released: "{date}"$'
+        - file: README.md
+          pattern: '@preview/gribouille:{version}'
 ```
+
+Each target must match at least once, or the bump fails before it writes anything.
+A `CITATION.cff` with no `date-released` line yet needs that line before the first release, or `required: false` on its target.
 
 ## Publish
 
@@ -215,7 +227,7 @@ concurrency:
 
 jobs:
   publish:
-    uses: mcanouil/typst-workflows/.github/workflows/publish.yml@v1
+    uses: mcanouil/typst-workflows/.github/workflows/publish.yml@v2
     secrets: inherit
 
   docs:
@@ -269,16 +281,15 @@ The workflows are built from these composite actions, which you can also use on 
 - `actions/docs-matrix` builds the docs render matrix and the `versions.json` list from the latest tag and `site-url`.
 - `actions/setup-git-user` makes Git commit as the GitHub App that owns a token.
 - `actions/find-release` finds the release of a version, draft or published, and the id of one of its assets.
-- `actions/release-notes` writes the changelog section of a version to a file.
 - `actions/universe-served` asks `packages.typst.org` whether it serves a package version.
 - `actions/universe-submit` checks the pull request token, then syncs the fork, pushes the package and opens or reuses the pull request on `typst/packages`.
 
 ## Versioning
 
-Call everything with `@v1`.
+Call everything with `@v2`.
 Each release publishes three tags: `vX.Y.Z`, which never moves, and `vX.Y` and `vX`, which roll forward on to each new release they cover.
-Pin `v1` to get every compatible release, or a fixed `v1.x.y` if you'd rather choose when to move.
-A change that breaks callers starts `v2`.
+Pin `v2` to get every compatible release, or a fixed `v2.x.y` if you'd rather choose when to move.
+A change that breaks callers starts `v3`.
 
 Releases are cut by the Version workflow, which you run by hand from `main` with `patch`, `minor` or `major`.
 It uses [release-actions](https://github.com/mcanouil/release-actions): it works out the next version from the latest tag, rolls `## Unreleased` in `CHANGELOG.md`, updates `CITATION.cff`, and pushes the commit `ci: release vX.Y.Z [skip ci]` as the GitHub App.

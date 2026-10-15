@@ -27,12 +27,11 @@ jobs:
     name: Resolve build matrix
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Skips the version bump of the current release flow: the Release workflow
-    # deploys the docs itself, so its push to main would deploy twice.
+    # Skips the version bump of the release flow: the Publish workflow deploys
+    # the docs itself, so the push of the bump to main would deploy twice.
     if: >-
       ${{ (github.event_name != 'push'
             || !contains(github.event.head_commit.message, 'ci: bump version to'))
-        && github.head_ref != 'ci/bump-version'
         && github.event.pull_request.draft != true }}
     outputs:
       tag: ${{ steps.matrix.outputs.tag }}
@@ -47,7 +46,7 @@ jobs:
 
       - name: Build the matrix
         id: matrix
-        uses: mcanouil/typst-workflows/actions/docs-matrix@v1
+        uses: mcanouil/typst-workflows/actions/docs-matrix@v2
 
   build:
     name: Render ${{ matrix.profile }} site
@@ -93,7 +92,7 @@ jobs:
       # Read after the ref switch, so each site compiles with its own pin.
       - name: Set up Typst
         id: typst
-        uses: mcanouil/typst-workflows/actions/setup-typst@v1
+        uses: mcanouil/typst-workflows/actions/setup-typst@v2
 
       - name: Restore the figure cache
         if: ${{ inputs.figure-cache != '' }}

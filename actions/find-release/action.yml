@@ -1,0 +1,43 @@
+name: Find a release
+description: Find the GitHub Release of a version, draft or published, and the id of one of its assets.
+
+inputs:
+  version:
+    description: "The release tag, such as 0.8.0."
+    required: true
+  asset:
+    description: "The asset to look for, such as gribouille-0.8.0.tar.gz."
+    required: true
+  token:
+    description: "A token that can push to the repository. Drafts are hidden from any other token."
+    required: true
+
+outputs:
+  state:
+    description: "draft, published or none."
+    value: ${{ steps.find.outputs.state }}
+  id:
+    description: "The release id, or empty."
+    value: ${{ steps.find.outputs.id }}
+  target:
+    description: "The commit the release targets, or empty."
+    value: ${{ steps.find.outputs.target }}
+  asset-id:
+    description: "The id of the asset, or empty."
+    value: ${{ steps.find.outputs.asset_id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Find the release
+      id: find
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        VERSION: ${{ inputs.version }}
+        ASSET: ${{ inputs.asset }}
+      run: |
+        set -euo pipefail
+        gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq '.[]' |
+          jq -s . |
+          "${GITHUB_ACTION_PATH}/find-release.sh" "${VERSION}" "${ASSET}" >>"${GITHUB_OUTPUT}"

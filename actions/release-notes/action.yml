@@ -1,0 +1,31 @@
+name: Release notes
+description: Write the CHANGELOG.md section of a version to a file.
+
+inputs:
+  version:
+    description: "The version whose notes to read."
+    required: true
+  changelog:
+    description: "Path to the changelog."
+    required: false
+    default: "CHANGELOG.md"
+
+outputs:
+  file:
+    description: "Path of the file that holds the notes."
+    value: ${{ steps.notes.outputs.file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read the notes
+      id: notes
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        CHANGELOG: ${{ inputs.changelog }}
+      run: |
+        set -euo pipefail
+        file="${RUNNER_TEMP}/notes-${VERSION}.md"
+        "${GITHUB_ACTION_PATH}/notes.sh" "${CHANGELOG}" "${VERSION}" >"${file}"
+        echo "file=${file}" >>"${GITHUB_OUTPUT}"

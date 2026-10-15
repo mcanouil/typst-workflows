@@ -1,0 +1,395 @@
+name: Release
+
+# Writes the next version on the default branch, builds the package archives at
+# that commit, keeps them in a draft GitHub Release, and opens the Typst
+# Universe pull request from those archives. The Publish workflow turns the
+# draft into the release once Typst Universe serves the version.
+on:
+  workflow_call:
+    inputs:
+      bump:
+        type: string
+        required: true
+      dry-run:
+        type: boolean
+        default: false
+      needs-lua:
+        type: boolean
+        default: false
+      needs-quarto:
+        type: boolean
+        default: false
+      needs-imagemagick:
+        type: boolean
+        default: false
+      check-args:
+        type: string
+        default: ""
+      failure-artifacts:
+        type: string
+        default: ""
+      shellcheck-paths:
+        type: string
+        default: "tools/*.sh .github/scripts/*.sh docs/_scripts/*.sh"
+      shfmt-paths:
+        type: string
+        default: "tools/*.sh .github/scripts/*.sh"
+      universe-fork:
+        type: string
+        default: "typst-universe-packages"
+    outputs:
+      version:
+        value: ${{ jobs.plan.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      name: ${{ steps.version.outputs.name }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Refuse a release from another branch
+        if: ${{ !inputs.dry-run && github.ref_name != github.event.repository.default_branch }}
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          echo "::error::A release runs from ${DEFAULT_BRANCH}, not ${REF_NAME}. Dispatch it from ${DEFAULT_BRANCH}, or tick dry-run to rehearse from ${REF_NAME}."
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # The bump is tried and undone, so that an empty Unreleased section stops
+      # the run in seconds rather than after the checks.
+      - name: Work out the version
+        id: version
+        shell: bash
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          name="$(awk -F'"' '/^name[[:space:]]*=/ { print $2; exit }' typst.toml)"
+          case "${BUMP}" in
+          none)
+            version="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' typst.toml)"
+            ;;
+          patch | minor | major)
+            if [[ ! -x tools/bump-version.sh ]]; then
+              echo "::error::tools/bump-version.sh is missing or not executable. The repository contract in mcanouil/typst-workflows describes it."
+              exit 1
+            fi
+            if ! version="$(tools/bump-version.sh "${BUMP}" 2>"${RUNNER_TEMP}/bump.err")"; then
+              cat "${RUNNER_TEMP}/bump.err" >&2
+              echo "::error::tools/bump-version.sh ${BUMP} failed: $(tail -n 1 "${RUNNER_TEMP}/bump.err")"
+              exit 1
+            fi
+            git checkout -- .
+            ;;
+          *)
+            echo "::error::bump is '${BUMP}'. Use patch, minor, major, or none to resubmit the current draft."
+            exit 1
+            ;;
+          esac
+          echo "name=${name}" >>"${GITHUB_OUTPUT}"
+          echo "version=${version}" >>"${GITHUB_OUTPUT}"
+          echo "Releasing ${name} ${version}."
+
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_KEY }}
+
+      - name: Find the release
+        id: release
+        uses: mcanouil/typst-workflows/actions/find-release@v1
+        with:
+          version: ${{ steps.version.outputs.version }}
+          asset: ${{ steps.version.outputs.name }}-${{ steps.version.outputs.version }}.tar.gz
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Check the release state
+        shell: bash
+        env:
+          BUMP: ${{ inputs.bump }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          STATE: ${{ steps.release.outputs.state }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${BUMP}" != "none" && "${STATE}" != "none" ]]; then
+            echo "::error::A ${STATE} release ${VERSION} already exists. Dispatch with bump none to resubmit a draft, or delete the draft to start again."
+            exit 1
+          fi
+          if [[ "${BUMP}" == "none" && "${STATE}" != "draft" && "${DRY_RUN}" != "true" ]]; then
+            echo "::error::bump none resubmits the draft release ${VERSION}, which is ${STATE}. Dispatch with patch, minor or major."
+            exit 1
+          fi
+
+  checks:
+    name: Checks
+    needs: plan
+    uses: mcanouil/typst-workflows/.github/workflows/checks.yml@v1
+    with:
+      needs-lua: ${{ inputs.needs-lua }}
+      needs-quarto: ${{ inputs.needs-quarto }}
+      needs-imagemagick: ${{ inputs.needs-imagemagick }}
+      check-args: ${{ inputs.check-args }}
+      failure-artifacts: ${{ inputs.failure-artifacts }}
+      shellcheck-paths: ${{ inputs.shellcheck-paths }}
+      shfmt-paths: ${{ inputs.shfmt-paths }}
+
+  release:
+    name: Write the version and draft the release
+    needs: [plan, checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    env:
+      BUMP: ${{ inputs.bump }}
+      DRY_RUN: ${{ inputs.dry-run }}
+      NAME: ${{ needs.plan.outputs.name }}
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_KEY }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up the Git user
+        uses: mcanouil/typst-workflows/actions/setup-git-user@v1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          app-slug: ${{ steps.app-token.outputs.app-slug }}
+
+      - name: Set up Lua
+        if: ${{ inputs.needs-lua }}
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+
+      # The checks ran on the dispatched commit, so the release refuses any other.
+      - name: Refuse a moved branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          if [[ "${head}" != "${GITHUB_SHA}" ]]; then
+            echo "::error::${GITHUB_REF_NAME} moved from ${GITHUB_SHA} to ${head} after the dispatch, so the checks did not see ${head}. Dispatch the release again."
+            exit 1
+          fi
+
+      # The App bypasses the pull request rule of the default branch, and
+      # [skip ci] keeps the checks and the docs from running on a tree that the
+      # checks job has already seen.
+      - name: Write the version
+        if: ${{ inputs.bump != 'none' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tools/bump-version.sh "${BUMP}")"
+          if [[ "${version}" != "${VERSION}" ]]; then
+            echo "::error::tools/bump-version.sh wrote ${version}, but the plan job worked out ${VERSION}. Dispatch the release again."
+            exit 1
+          fi
+          git add -u
+          git commit -m "ci: bump version to ${VERSION} [skip ci]"
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            echo "Dry run: the bump commit stays on the runner."
+          elif ! git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
+            echo "::error::The App could not push the bump to ${GITHUB_REF_NAME}. Add it to the bypass list of the branch ruleset, then dispatch the release again."
+            exit 1
+          fi
+
+      - name: Resolve the release commit
+        id: sha
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
+
+      - name: Read the release notes
+        id: notes
+        uses: mcanouil/typst-workflows/actions/release-notes@v1
+        with:
+          version: ${{ needs.plan.outputs.version }}
+
+      - name: Build the package archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/package.sh archive "${RUNNER_TEMP}/assets"
+          for ext in tar.gz zip; do
+            if [[ ! -f "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.${ext}" ]]; then
+              echo "::error::tools/package.sh archive wrote no ${NAME}-${VERSION}.${ext}. The repository contract in mcanouil/typst-workflows describes its output."
+              exit 1
+            fi
+          done
+
+      - name: Upload the archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-archives
+          path: ${{ runner.temp }}/assets
+          retention-days: 7
+
+      - name: Draft the release
+        if: ${{ !inputs.dry-run }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          NOTES: ${{ steps.notes.outputs.file }}
+        run: |
+          set -euo pipefail
+          assets=(
+            "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz#${NAME} ${VERSION} (tar.gz)"
+            "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.zip#${NAME} ${VERSION} (zip)"
+          )
+          if [[ "${BUMP}" == "none" ]]; then
+            gh release edit "${VERSION}" --target "${SHA}" --notes-file "${NOTES}"
+            gh release upload "${VERSION}" "${assets[@]}" --clobber
+          else
+            gh release create "${VERSION}" "${assets[@]}" --draft \
+              --target "${SHA}" --title "${VERSION}" --notes-file "${NOTES}"
+          fi
+
+      - name: Summary
+        shell: bash
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          {
+            echo "## Release ${NAME} ${VERSION}"
+            echo ""
+            if [[ "${DRY_RUN}" == "true" ]]; then
+              echo "- Dry run: nothing pushed, no draft. The archives are in the \`release-archives\` artefact."
+            else
+              echo "- Commit: \`${SHA}\`"
+              echo "- Draft: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases"
+            fi
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+  universe:
+    name: Submit to Typst Universe
+    needs: [plan, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: typst-universe
+    env:
+      NAME: ${{ needs.plan.outputs.name }}
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # One token for this repository, whose draft holds the archive, and for
+      # the fork, which the App syncs and pushes to.
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            ${{ github.event.repository.name }}
+            ${{ inputs.universe-fork }}
+
+      - name: Set up the Git user
+        uses: mcanouil/typst-workflows/actions/setup-git-user@v1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          app-slug: ${{ steps.app-token.outputs.app-slug }}
+
+      - name: Download the archives of the dry run
+        if: ${{ inputs.dry-run }}
+        uses: actions/download-artifact@v8
+        with:
+          name: release-archives
+          path: ${{ runner.temp }}/assets
+
+      - name: Find the draft release
+        if: ${{ !inputs.dry-run }}
+        id: draft
+        uses: mcanouil/typst-workflows/actions/find-release@v1
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          asset: ${{ needs.plan.outputs.name }}-${{ needs.plan.outputs.version }}.tar.gz
+          token: ${{ steps.app-token.outputs.token }}
+
+      # The submitted bytes are the bytes of the draft release.
+      - name: Download the archive of the draft release
+        if: ${{ !inputs.dry-run }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ASSET_ID: ${{ steps.draft.outputs.asset-id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ASSET_ID}" ]]; then
+            echo "::error::The draft release ${VERSION} has no ${NAME}-${VERSION}.tar.gz. Dispatch the release again with bump none."
+            exit 1
+          fi
+          mkdir -p "${RUNNER_TEMP}/assets"
+          gh api -H "Accept: application/octet-stream" \
+            "repos/${GITHUB_REPOSITORY}/releases/assets/${ASSET_ID}" \
+            >"${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz"
+
+      - name: Set up typst-package-check
+        uses: mcanouil/typst-workflows/actions/setup-package-check@v1
+
+      - name: Lint the archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          check="${RUNNER_TEMP}/check"
+          mkdir -p "${check}/${NAME}"
+          tar -xzf "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz" -C "${check}"
+          mv "${check}/${NAME}-${VERSION}" "${check}/${NAME}/${VERSION}"
+          typst-package-check check "${check}/${NAME}/${VERSION}"
+
+      - name: Submit
+        id: submit
+        uses: mcanouil/typst-workflows/actions/universe-submit@v1
+        with:
+          name: ${{ needs.plan.outputs.name }}
+          version: ${{ needs.plan.outputs.version }}
+          archive: ${{ runner.temp }}/assets/${{ needs.plan.outputs.name }}-${{ needs.plan.outputs.version }}.tar.gz
+          fork: ${{ github.repository_owner }}/${{ inputs.universe-fork }}
+          fork-token: ${{ steps.app-token.outputs.token }}
+          pr-token: ${{ secrets.UNIVERSE_TOKEN }}
+          dry-run: ${{ inputs.dry-run }}
+
+      - name: Summary
+        shell: bash
+        env:
+          BRANCH: ${{ steps.submit.outputs.branch }}
+          PR_URL: ${{ steps.submit.outputs.pr-url }}
+          FORK: ${{ github.repository_owner }}/${{ inputs.universe-fork }}
+        run: |
+          {
+            echo "## Typst Universe"
+            echo ""
+            echo "- Branch: \`${FORK}:${BRANCH}\`"
+            if [[ -n "${PR_URL}" ]]; then
+              echo "- Pull request: ${PR_URL}"
+              echo "- Next: run Publish once Typst Universe serves ${NAME}:${VERSION}."
+            else
+              echo "- Dry run: nothing was pushed and no pull request was opened. The job log holds the body."
+            fi
+          } >>"${GITHUB_STEP_SUMMARY}"

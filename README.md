@@ -281,6 +281,7 @@ The workflows are built from these composite actions, which you can also use on 
 - `actions/docs-matrix` builds the docs render matrix and the `versions.json` list from the latest tag and `site-url`.
 - `actions/setup-git-user` makes Git commit as the GitHub App that owns a token.
 - `actions/find-release` finds the release of a version, draft or published, and the id of one of its assets.
+- `actions/fill-package-cache` compiles a package and its template entrypoint, so that `typst-package-check` finds their dependencies in the Typst cache.
 - `actions/universe-served` asks `packages.typst.org` whether it serves a package version.
 - `actions/universe-submit` checks the pull request token, then syncs the fork, pushes the package and opens or reuses the pull request on `typst/packages`.
 

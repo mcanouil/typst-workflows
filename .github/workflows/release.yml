@@ -218,7 +218,6 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     env:
-      BUMP: ${{ inputs.bump }}
       DRY_RUN: ${{ inputs.dry-run }}
       NAME: ${{ needs.plan.outputs.name }}
       VERSION: ${{ needs.plan.outputs.version }}
@@ -259,17 +258,50 @@ jobs:
           fi
 
       # The commit stays on the runner until the notes and the archives are
-      # built, so that a failure there leaves the branch as it was.
+      # built, so that a failure there leaves the branch as it was. The date is
+      # the plan's, so that a run across midnight writes one date.
       - name: Write the version
+        id: bump
+        if: ${{ inputs.bump != 'none' }}
+        uses: mcanouil/release-actions/bump@v1
+        with:
+          bump: ${{ inputs.bump }}
+          date: ${{ needs.plan.outputs.date }}
+          targets: |
+            - file: typst.toml
+              pattern: '^version = "{version}"$'
+              source: true
+            ${{ inputs.targets }}
+
+      - name: Check the version
+        if: ${{ inputs.bump != 'none' }}
+        shell: bash
+        env:
+          BUMPED: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${BUMPED}" != "${VERSION}" ]]; then
+            echo "::error::The bump wrote ${BUMPED}, but the plan job worked out ${VERSION}. Dispatch the release again."
+            exit 1
+          fi
+
+      - name: Run the after-bump command
+        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' }}
+        shell: bash
+        env:
+          AFTER_BUMP: ${{ inputs.after-bump }}
+        run: |
+          set -euo pipefail
+          if ! bash -euo pipefail -c "${AFTER_BUMP}"; then
+            echo "::error::after-bump failed: ${AFTER_BUMP}. Nothing was committed or pushed."
+            exit 1
+          fi
+
+      - name: Commit the version
         if: ${{ inputs.bump != 'none' }}
         shell: bash
         run: |
           set -euo pipefail
-          version="$(tools/bump-version.sh "${BUMP}")"
-          if [[ "${version}" != "${VERSION}" ]]; then
-            echo "::error::tools/bump-version.sh wrote ${version}, but the plan job worked out ${VERSION}. Dispatch the release again."
-            exit 1
-          fi
           git add -u
           git commit -m "ci: bump version to ${VERSION} [skip ci]"
 
@@ -278,11 +310,15 @@ jobs:
         shell: bash
         run: echo "sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
 
+      # With bump none there is no notes-file, so the section is read from the
+      # changelog by version.
       - name: Read the release notes
         id: notes
-        uses: mcanouil/typst-workflows/actions/release-notes@v1
+        uses: mcanouil/release-actions/notes@v1
         with:
+          notes-file: ${{ steps.bump.outputs.notes-file }}
           version: ${{ needs.plan.outputs.version }}
+          section-heading: ""
 
       - name: Build the package archives
         shell: bash
@@ -299,7 +335,7 @@ jobs:
           # the pull request.
           cp "${NOTES}" "${RUNNER_TEMP}/assets/notes.md"
         env:
-          NOTES: ${{ steps.notes.outputs.file }}
+          NOTES: ${{ steps.notes.outputs.body-file }}
 
       - name: Upload the archives
         uses: actions/upload-artifact@v7
@@ -326,26 +362,34 @@ jobs:
       # From here, the version is on the branch. If this step fails, dispatch
       # with bump none, which creates the missing draft.
       - name: Draft the release
-        if: ${{ !inputs.dry-run }}
+        if: ${{ !inputs.dry-run && needs.plan.outputs.state == 'none' }}
+        uses: mcanouil/release-actions/release@v1
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          body-file: ${{ steps.notes.outputs.body-file }}
+          title: "{version}"
+          target: ${{ steps.sha.outputs.sha }}
+          draft: true
+          assets: |
+            ${{ runner.temp }}/assets/${{ needs.plan.outputs.name }}-${{ needs.plan.outputs.version }}.tar.gz#${{ needs.plan.outputs.name }} ${{ needs.plan.outputs.version }} (tar.gz)
+            ${{ runner.temp }}/assets/${{ needs.plan.outputs.name }}-${{ needs.plan.outputs.version }}.zip#${{ needs.plan.outputs.name }} ${{ needs.plan.outputs.version }} (zip)
+          token: ${{ steps.app-token.outputs.token }}
+
+      # release-actions does not edit drafts, so a resubmission moves the draft
+      # and replaces its assets here.
+      - name: Update the draft
+        if: ${{ !inputs.dry-run && needs.plan.outputs.state == 'draft' }}
         shell: bash
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           SHA: ${{ steps.sha.outputs.sha }}
-          NOTES: ${{ steps.notes.outputs.file }}
-          STATE: ${{ needs.plan.outputs.state }}
+          NOTES: ${{ steps.notes.outputs.body-file }}
         run: |
           set -euo pipefail
-          assets=(
-            "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz#${NAME} ${VERSION} (tar.gz)"
+          gh release edit "${VERSION}" --target "${SHA}" --notes-file "${NOTES}"
+          gh release upload "${VERSION}" --clobber \
+            "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz#${NAME} ${VERSION} (tar.gz)" \
             "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.zip#${NAME} ${VERSION} (zip)"
-          )
-          if [[ "${STATE}" == "draft" ]]; then
-            gh release edit "${VERSION}" --target "${SHA}" --notes-file "${NOTES}"
-            gh release upload "${VERSION}" "${assets[@]}" --clobber
-          else
-            gh release create "${VERSION}" "${assets[@]}" --draft \
-              --target "${SHA}" --title "${VERSION}" --notes-file "${NOTES}"
-          fi
 
       - name: Summary
         shell: bash

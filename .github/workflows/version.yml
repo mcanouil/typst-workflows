@@ -1,7 +1,10 @@
 name: Version
 
-# Cuts a release from the default branch: vX.Y.Z, which never moves, and the
-# rolling vX.Y and vX, which callers pin. Run by hand.
+# Cuts a release from the default branch with mcanouil/release-actions. It
+# bumps CITATION.cff and rolls CHANGELOG.md, pushes that commit as the GitHub
+# App, then tags it vX.Y.Z, which never moves, and moves the rolling vX.Y and
+# vX, which callers pin. The release body is the changelog section and the
+# generated notes. Run by hand.
 on:
   workflow_dispatch:
     inputs:
@@ -15,11 +18,11 @@ on:
           - "major"
 
 permissions:
-  contents: write
+  contents: read
 
 # Two runs at once would read the same latest tag and race over the rolling
-# ones. Queue rather than cancel: a cancelled run can leave vX pushed while
-# vX.Y.Z is not.
+# ones. Queue rather than cancel: a cancelled run can leave the bump pushed
+# while the release is not.
 concurrency:
   group: version
   cancel-in-progress: false
@@ -56,30 +59,33 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Resolve the version to cut
-        id: resolve-version
-        env:
-          BUMP: ${{ inputs.version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
-          .github/scripts/next-version.sh "${BUMP}" "${latest}" > "${RUNNER_TEMP}/version.txt"
-          version="$(sed -n 's/^version=//p' "${RUNNER_TEMP}/version.txt")"
-          if git rev-parse -q --verify "refs/tags/${version}" > /dev/null; then
-            echo "::error::${version} already exists."
-            exit 1
-          fi
-          echo "Cutting ${version}."
-          cat "${RUNNER_TEMP}/version.txt" >> "${GITHUB_OUTPUT}"
+      # The local copy, so that a major cut does not need the next major's tag.
+      - name: Set up the Git user
+        uses: ./actions/setup-git-user
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          app-slug: ${{ steps.app-token.outputs.app-slug }}
 
-      # The README tells callers which major to pin, and this workflow does not
-      # push to the default branch. A major cut therefore lands its README change
-      # as an ordinary pull request first, and this step makes forgetting that
-      # impossible.
+      - name: Bump the version
+        id: bump
+        uses: mcanouil/release-actions/bump@v1
+        with:
+          bump: ${{ inputs.version }}
+          version-source: tag
+          tag-prefix: v
+          targets: |
+            - file: CITATION.cff
+              pattern: '^version: {version}$'
+            - file: CITATION.cff
+              pattern: '^date-released: "{date}"$'
+
+      # The README tells callers which major to pin, and a @v{major} target
+      # would also rewrite pins such as actions/checkout@v7. A major cut
+      # therefore lands its README change as an ordinary pull request first, and
+      # this step makes forgetting that impossible.
       - name: Check the README pins the major being cut
         env:
-          MAJOR: ${{ steps.resolve-version.outputs.major }}
+          MAJOR: v${{ steps.bump.outputs.major }}
         shell: bash
         run: |
           set -euo pipefail
@@ -95,58 +101,73 @@ jobs:
           fi
           echo "README.md pins ${MAJOR}."
 
-      - name: Tag the release
-        env:
-          VERSION: ${{ steps.resolve-version.outputs.version }}
-          MAJOR: ${{ steps.resolve-version.outputs.major }}
-          MINOR: ${{ steps.resolve-version.outputs.minor }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Lightweight, deliberately. GitHub does not peel an annotated tag to
-          # its commit when it resolves a relative workflow reference, so a
-          # caller pinning one can fail before a job starts. `tag.gpgSign` is
-          # spelled out because it would otherwise make these annotated.
-          git -c tag.gpgSign=false tag "${VERSION}"
-          # The rolling tags are what callers pin, so they move on to this
-          # commit. Only the exact version is immutable.
-          git -c tag.gpgSign=false tag -f "${MINOR}"
-          git -c tag.gpgSign=false tag -f "${MAJOR}"
-          git push origin "${VERSION}"
-          git push --force origin "${MINOR}" "${MAJOR}"
-          echo "Tagged ${VERSION}, and moved ${MINOR} and ${MAJOR} on to it."
-
-      # Only the exact version carries a release. The rolling tags stay bare,
-      # which keeps them movable whatever the release immutability setting is.
-      - name: Release on GitHub
+      # The release step refuses an existing tag or release too, but only after
+      # the push, which would leave the bump on the default branch.
+      - name: Refuse an existing tag or release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VERSION: ${{ steps.resolve-version.outputs.version }}
+          TAG: v${{ steps.bump.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "${VERSION}" \
-            --title "${VERSION}" \
-            --generate-notes \
-            --latest \
-            --verify-tag
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::Tag ${TAG} already exists. Delete it, or create its release by hand, then dispatch this workflow again."
+            exit 1
+          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "::error::A release ${TAG} already exists, perhaps as a draft. Delete it, then dispatch this workflow again."
+            exit 1
+          fi
 
-      - name: Summary
+      # The App is exempt from the pull request rule of the default branch, and
+      # [skip ci] keeps CI from running again on a tree it has checked.
+      - name: Push the version
+        id: push
         env:
-          VERSION: ${{ steps.resolve-version.outputs.version }}
-          MAJOR: ${{ steps.resolve-version.outputs.major }}
-          MINOR: ${{ steps.resolve-version.outputs.minor }}
-          PREVIOUS: ${{ steps.resolve-version.outputs.previous }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          FILES: ${{ steps.bump.outputs.files }}
         shell: bash
         run: |
-          {
-            echo "## Version"
-            echo ""
-            echo "| Field | Value |"
-            echo "|-------|-------|"
-            echo "| Previous | \`${PREVIOUS}\` |"
-            echo "| Released | \`${VERSION}\` |"
-            echo "| Rolling | \`${MINOR}\`, \`${MAJOR}\` |"
-            echo ""
-            echo "[Release notes](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${VERSION})"
-          } >> "${GITHUB_STEP_SUMMARY}"
+          set -euo pipefail
+          printf '%s\n' "${FILES}" | git add --pathspec-from-file=-
+          git commit -m "ci: release v${VERSION} [skip ci]"
+          if ! git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
+            echo "::error::The App could not push the bump to ${GITHUB_REF_NAME}. If the push output says the branch moved, dispatch this workflow again; otherwise add the App to the bypass list of the branch ruleset first."
+            exit 1
+          fi
+          echo "sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
+
+      - name: Compose the release body
+        id: notes
+        uses: mcanouil/release-actions/notes@v1
+        with:
+          notes-file: ${{ steps.bump.outputs.notes-file }}
+          version: ${{ steps.bump.outputs.version }}
+          tag: v${{ steps.bump.outputs.version }}
+          target: ${{ steps.push.outputs.sha }}
+          generate-notes: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      # Lightweight tags, deliberately: GitHub does not peel an annotated tag to
+      # its commit when it resolves a relative workflow reference.
+      - name: Create the release
+        uses: mcanouil/release-actions/release@v1
+        with:
+          version: ${{ steps.bump.outputs.version }}
+          tag-prefix: v
+          body-file: ${{ steps.notes.outputs.body-file }}
+          target: ${{ steps.push.outputs.sha }}
+          latest: true
+          rolling: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      # A new dispatch would stop on the emptied Unreleased section, and then on
+      # the existing changelog heading, so the pushed bump has to go first.
+      - name: Explain the recovery
+        if: ${{ failure() && steps.push.outputs.sha != '' }}
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          SHA: ${{ steps.push.outputs.sha }}
+        shell: bash
+        run: |
+          echo "::error::${GITHUB_REF_NAME} holds the bump ${SHA} for v${VERSION}, but the run failed after the push. If release v${VERSION} does not exist, revert that commit with a pull request, then dispatch this workflow again. If it exists, only the rolling tags are missing: move them to ${SHA} by hand."

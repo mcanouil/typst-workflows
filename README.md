@@ -281,8 +281,9 @@ Pin `v1` to get every compatible release, or a fixed `v1.x.y` if you'd rather ch
 A change that breaks callers starts `v2`.
 
 Releases are cut by the Version workflow, which you run by hand from `main` with `patch`, `minor` or `major`.
-It works out the next version from the latest tag, tags the commit, moves the rolling tags, and publishes a GitHub Release with generated notes.
-It refuses a major release until the usage examples in this README pin the new major, so that change lands as a pull request first.
+It uses [release-actions](https://github.com/mcanouil/release-actions): it works out the next version from the latest tag, rolls `## Unreleased` in `CHANGELOG.md`, updates `CITATION.cff`, and pushes the commit `ci: release vX.Y.Z [skip ci]` as the GitHub App.
+It then tags that commit, moves the rolling tags, and publishes a GitHub Release whose body is the changelog section and the generated notes.
+It refuses an empty `## Unreleased`, and it refuses a major release until the usage examples in this README pin the new major, so that change lands as a pull request first.
 The tags are lightweight on purpose, because GitHub doesn't resolve an annotated tag for a relative workflow reference.
 
 ## Development

@@ -42,8 +42,8 @@ jobs:
       - name: Lint shell scripts
         uses: ./actions/lint-shell
         with:
-          shellcheck-paths: "actions/*/*.sh tests/*.sh .github/scripts/*.sh"
-          shfmt-paths: "actions/*/*.sh tests/*.sh .github/scripts/*.sh"
+          shellcheck-paths: "actions/*/*.sh tests/*.sh"
+          shfmt-paths: "actions/*/*.sh tests/*.sh"
 
       - name: Run the tests
         shell: bash

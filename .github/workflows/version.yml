@@ -143,8 +143,8 @@ jobs:
           rolling: true
           token: ${{ steps.app-token.outputs.token }}
 
-      # A new dispatch would bump to the same version and stop on its existing
-      # changelog heading, so the pushed bump has to go first.
+      # A new dispatch would stop on the emptied Unreleased section, and then on
+      # the existing changelog heading, so the pushed bump has to go first.
       - name: Explain the recovery
         if: ${{ failure() && steps.push.outputs.sha != '' }}
         env:

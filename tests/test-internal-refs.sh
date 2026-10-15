@@ -11,3 +11,11 @@ refs="$(grep -rhoE 'mcanouil/typst-workflows/[^ "]+' "${ROOT}/.github/workflows"
 
 bad="$(grep -vE '@v1$' <<<"${refs}" || true)"
 assert_eq "" "${bad}" "internal references that are not @v1"
+
+# A reference to an action that does not exist passes actionlint and fails only
+# when a job sets up, so each one must name a directory with an action.yml.
+missing=""
+while IFS= read -r action; do
+  [[ -f "${ROOT}/${action}/action.yml" ]] || missing+="${action} "
+done < <(grep -oE '^mcanouil/typst-workflows/actions/[^@]+' <<<"${refs}" | sed 's|^mcanouil/typst-workflows/||' | sort -u)
+assert_eq "" "${missing}" "internal action references with no action.yml"

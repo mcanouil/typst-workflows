@@ -1,0 +1,28 @@
+name: Typst Universe serves
+description: Ask packages.typst.org whether it serves a package version.
+
+inputs:
+  name:
+    description: "The package name."
+    required: true
+  version:
+    description: "The package version."
+    required: true
+
+outputs:
+  served:
+    description: "true when the index lists name:version, false otherwise."
+    value: ${{ steps.served.outputs.served }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read the package index
+      id: served
+      shell: bash
+      env:
+        NAME: ${{ inputs.name }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        "${GITHUB_ACTION_PATH}/served.sh" "${NAME}" "${VERSION}" >>"${GITHUB_OUTPUT}"

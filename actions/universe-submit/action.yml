@@ -1,0 +1,82 @@
+name: Submit to Typst Universe
+description: Sync the fork of typst/packages, push the package on a branch, and open or reuse the pull request.
+
+inputs:
+  name:
+    description: "The package name."
+    required: true
+  version:
+    description: "The package version."
+    required: true
+  archive:
+    description: "Path to <name>-<version>.tar.gz."
+    required: true
+  description:
+    description: "The package paragraph for the pull request, with a Name: line for a new package."
+    required: false
+    default: ".github/universe.md"
+  notes:
+    description: "Path to the release notes, which the pull request body lists as the changes. Empty leaves them out."
+    required: false
+    default: ""
+  fork:
+    description: "The fork of typst/packages, as owner/repo."
+    required: true
+  fork-token:
+    description: "A token that can write to the fork: the App token."
+    required: true
+  pr-token:
+    description: "A classic personal access token with public_repo alone, for the pull request on typst/packages."
+    required: true
+  dry-run:
+    description: "true to commit and check the push without pushing or opening the pull request."
+    required: false
+    default: "false"
+
+outputs:
+  branch:
+    description: "The branch on the fork."
+    value: ${{ steps.submit.outputs.branch }}
+  pr-url:
+    description: "The pull request on typst/packages, or empty in a dry run."
+    value: ${{ steps.submit.outputs.pr_url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the pull request token
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.pr-token }}
+      run: |
+        set -euo pipefail
+        if [[ -z "${GH_TOKEN}" ]]; then
+          echo "::error::The pull request token is empty. Store a classic personal access token with the public_repo scope alone as UNIVERSE_TOKEN on the typst-universe environment."
+          exit 1
+        fi
+        gh api -i user | "${GITHUB_ACTION_PATH}/check-token.sh"
+
+    - name: Submit
+      id: submit
+      shell: bash
+      env:
+        FORK_TOKEN: ${{ inputs.fork-token }}
+        GH_TOKEN: ${{ inputs.pr-token }}
+        NAME: ${{ inputs.name }}
+        VERSION: ${{ inputs.version }}
+        ARCHIVE: ${{ inputs.archive }}
+        DESCRIPTION: ${{ inputs.description }}
+        NOTES: ${{ inputs.notes }}
+        FORK: ${{ inputs.fork }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        set -euo pipefail
+        args=(--name "${NAME}" --version "${VERSION}" --archive "${ARCHIVE}"
+          --description "${DESCRIPTION}" --fork "${FORK}" --sync)
+        if [[ -n "${NOTES}" ]]; then
+          args+=(--notes "${NOTES}")
+        fi
+        if [[ "${DRY_RUN}" == "true" ]]; then
+          args+=(--dry-run)
+        fi
+        "${GITHUB_ACTION_PATH}/submit.sh" "${args[@]}" >>"${GITHUB_OUTPUT}"

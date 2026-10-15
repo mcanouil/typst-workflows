@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.3.0 (2026-10-15)
+
 - feat: Release notes now come from the changelog. (#7)
 
 ## 1.2.0 (2026-10-15)

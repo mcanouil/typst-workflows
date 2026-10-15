@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 2.0.0 (2026-10-15)
+
 - feat!: The Release workflow takes a `targets` input and bumps the version with mcanouil/release-actions, so a package no longer provides `tools/bump-version.sh`. (#8)
 - feat!: Remove the `release-notes` action; use `mcanouil/release-actions/notes` instead. (#8)
 - feat: The Release workflow takes an `after-bump` command, run after the bump and before the commit. (#8)

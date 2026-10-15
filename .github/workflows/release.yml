@@ -105,6 +105,26 @@ jobs:
               source: true
             ${{ inputs.targets }}
 
+      - name: Set up Lua
+        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' && inputs.needs-lua }}
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+
+      # after-bump is tried on the probe too, so a missing or broken command
+      # fails before the checks rather than after them.
+      - name: Try the after-bump command
+        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' }}
+        shell: bash
+        env:
+          AFTER_BUMP: ${{ inputs.after-bump }}
+        run: |
+          set -euo pipefail
+          if ! bash -euo pipefail -c "${AFTER_BUMP}"; then
+            echo "::error::after-bump failed on the probe: ${AFTER_BUMP}. Fix it, then dispatch the release again."
+            exit 1
+          fi
+
       - name: Undo the bump
         if: ${{ inputs.bump != 'none' }}
         shell: bash

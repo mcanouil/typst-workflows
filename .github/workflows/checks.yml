@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Typst
-        uses: mcanouil/typst-workflows/actions/setup-typst@v1
+        uses: mcanouil/typst-workflows/actions/setup-typst@v2
 
       - name: Set up Lua
         if: ${{ inputs.needs-lua }}
@@ -66,7 +66,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends imagemagick
 
       - name: Run the suite
-        uses: mcanouil/typst-workflows/actions/run-logged@v1
+        uses: mcanouil/typst-workflows/actions/run-logged@v2
         env:
           CHECK_ARGS: ${{ inputs.check-args }}
         with:
@@ -92,7 +92,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Typst
-        uses: mcanouil/typst-workflows/actions/setup-typst@v1
+        uses: mcanouil/typst-workflows/actions/setup-typst@v2
 
       - name: Set up Lua
         if: ${{ inputs.needs-lua }}
@@ -101,10 +101,10 @@ jobs:
           luaVersion: "5.4"
 
       - name: Set up typst-package-check
-        uses: mcanouil/typst-workflows/actions/setup-package-check@v1
+        uses: mcanouil/typst-workflows/actions/setup-package-check@v2
 
       - name: Run tools/dry-release.sh
-        uses: mcanouil/typst-workflows/actions/run-logged@v1
+        uses: mcanouil/typst-workflows/actions/run-logged@v2
         env:
           XDG_DATA_HOME: ${{ runner.temp }}
           STAGE_ROOT: ${{ runner.temp }}/stage
@@ -122,7 +122,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Lint
-        uses: mcanouil/typst-workflows/actions/lint-shell@v1
+        uses: mcanouil/typst-workflows/actions/lint-shell@v2
         with:
           shellcheck-paths: ${{ inputs.shellcheck-paths }}
           shfmt-paths: ${{ inputs.shfmt-paths }}

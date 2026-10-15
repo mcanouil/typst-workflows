@@ -1,15 +1,22 @@
 name: Release
 
-# Writes the next version on the default branch, builds the package archives at
-# that commit, keeps them in a draft GitHub Release, and opens the Typst
-# Universe pull request from those archives. The Publish workflow turns the
-# draft into the release once Typst Universe serves the version.
+# Writes the next version on the default branch with mcanouil/release-actions,
+# builds the package archives at that commit, keeps them in a draft GitHub
+# Release, and opens the Typst Universe pull request from those archives. The
+# Publish workflow turns the draft into the release once Typst Universe serves
+# the version.
 on:
   workflow_call:
     inputs:
       bump:
         type: string
         required: true
+      targets:
+        type: string
+        default: ""
+      after-bump:
+        type: string
+        default: ""
       dry-run:
         type: boolean
         default: false
@@ -52,6 +59,7 @@ jobs:
     outputs:
       name: ${{ steps.version.outputs.name }}
       version: ${{ steps.version.outputs.version }}
+      date: ${{ steps.version.outputs.date }}
       state: ${{ steps.release.outputs.state }}
     steps:
       - name: Refuse a release from another branch
@@ -67,39 +75,83 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # The bump is tried and undone, so that an empty Unreleased section stops
-      # the run in seconds rather than after the checks.
-      - name: Work out the version
-        id: version
+      - name: Check the bump
         shell: bash
         env:
           BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
-          name="$(awk -F'"' '/^name[[:space:]]*=/ { print $2; exit }' typst.toml)"
           case "${BUMP}" in
-          none)
-            version="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' typst.toml)"
-            ;;
-          patch | minor | major)
-            if [[ ! -x tools/bump-version.sh ]]; then
-              echo "::error::tools/bump-version.sh is missing or not executable. The repository contract in mcanouil/typst-workflows describes it."
-              exit 1
-            fi
-            if ! version="$(tools/bump-version.sh "${BUMP}" 2>"${RUNNER_TEMP}/bump.err")"; then
-              cat "${RUNNER_TEMP}/bump.err" >&2
-              echo "::error::tools/bump-version.sh ${BUMP} failed: $(tail -n 1 "${RUNNER_TEMP}/bump.err")"
-              exit 1
-            fi
-            git checkout -- .
-            ;;
+          patch | minor | major | none) ;;
           *)
             echo "::error::bump is '${BUMP}'. Use patch, minor, major, or none to resubmit the current draft."
             exit 1
             ;;
           esac
-          echo "name=${name}" >>"${GITHUB_OUTPUT}"
-          echo "version=${version}" >>"${GITHUB_OUTPUT}"
+
+      # The bump is tried and undone, so that an empty Unreleased section or a
+      # target with no match stops the run in seconds rather than after the
+      # checks. The caller's list follows the typst.toml target as it is, so
+      # each of its items must start at column 0.
+      - name: Try the bump
+        id: probe
+        if: ${{ inputs.bump != 'none' }}
+        uses: mcanouil/release-actions/bump@v1
+        with:
+          bump: ${{ inputs.bump }}
+          targets: |
+            - file: typst.toml
+              pattern: '^version = "{version}"$'
+              source: true
+            ${{ inputs.targets }}
+
+      - name: Set up Lua
+        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' && inputs.needs-lua }}
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+
+      # after-bump is tried on the probe too, so a missing or broken command
+      # fails before the checks rather than after them.
+      - name: Try the after-bump command
+        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' }}
+        shell: bash
+        env:
+          AFTER_BUMP: ${{ inputs.after-bump }}
+        run: |
+          set -euo pipefail
+          if ! bash -euo pipefail -c "${AFTER_BUMP}"; then
+            echo "::error::after-bump failed on the probe: ${AFTER_BUMP}. Fix it, then dispatch the release again."
+            exit 1
+          fi
+
+      - name: Undo the bump
+        if: ${{ inputs.bump != 'none' }}
+        shell: bash
+        run: git checkout -- .
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        env:
+          BUMP: ${{ inputs.bump }}
+          PROBE_VERSION: ${{ steps.probe.outputs.version }}
+          PROBE_DATE: ${{ steps.probe.outputs.date }}
+        run: |
+          set -euo pipefail
+          name="$(awk -F'"' '/^name[[:space:]]*=/ { print $2; exit }' typst.toml)"
+          if [[ "${BUMP}" == "none" ]]; then
+            version="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' typst.toml)"
+            date=""
+          else
+            version="${PROBE_VERSION}"
+            date="${PROBE_DATE}"
+          fi
+          {
+            echo "name=${name}"
+            echo "version=${version}"
+            echo "date=${date}"
+          } >>"${GITHUB_OUTPUT}"
           echo "Releasing ${name} ${version}."
 
       - name: Create GitHub App token
@@ -111,7 +163,7 @@ jobs:
 
       - name: Find the release
         id: release
-        uses: mcanouil/typst-workflows/actions/find-release@v1
+        uses: mcanouil/typst-workflows/actions/find-release@v2
         with:
           version: ${{ steps.version.outputs.version }}
           asset: ${{ steps.version.outputs.name }}-${{ steps.version.outputs.version }}.tar.gz
@@ -122,7 +174,7 @@ jobs:
       - name: Ask Typst Universe
         id: served
         if: ${{ inputs.bump == 'none' }}
-        uses: mcanouil/typst-workflows/actions/universe-served@v1
+        uses: mcanouil/typst-workflows/actions/universe-served@v2
         with:
           name: ${{ steps.version.outputs.name }}
           version: ${{ steps.version.outputs.version }}
@@ -130,10 +182,12 @@ jobs:
       # bump none on a version with no release finishes a run that pushed the
       # bump and then stopped, so the version must already have its notes.
       - name: Read the release notes
+        id: notes
         if: ${{ inputs.bump == 'none' }}
-        uses: mcanouil/typst-workflows/actions/release-notes@v1
+        uses: mcanouil/release-actions/notes@v1
         with:
           version: ${{ steps.version.outputs.version }}
+          section-heading: ""
 
       - name: Check the release state
         shell: bash
@@ -143,6 +197,7 @@ jobs:
           SERVED: ${{ steps.served.outputs.served }}
           NAME: ${{ steps.version.outputs.name }}
           VERSION: ${{ steps.version.outputs.version }}
+          NOTES: ${{ steps.notes.outputs.body-file }}
         run: |
           set -euo pipefail
           if [[ "${BUMP}" != "none" && "${STATE}" != "none" ]]; then
@@ -158,16 +213,20 @@ jobs:
               echo "::error::Typst Universe already serves ${NAME}:${VERSION}, so a resubmission would change bytes it has accepted. Run Publish instead."
               exit 1
             fi
-            if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null; then
-              echo "::error::Tag ${VERSION} exists with no published release. Delete the tag, or publish its release by hand, then dispatch again."
+            if [[ ! -s "${NOTES}" ]]; then
+              echo "::error::The ${VERSION} section of CHANGELOG.md is empty. Add the notes under its heading, then dispatch again."
               exit 1
             fi
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null; then
+            echo "::error::Tag ${VERSION} exists with no published release. Delete the tag, or publish its release by hand, then dispatch again."
+            exit 1
           fi
 
   checks:
     name: Checks
     needs: plan
-    uses: mcanouil/typst-workflows/.github/workflows/checks.yml@v1
+    uses: mcanouil/typst-workflows/.github/workflows/checks.yml@v2
     with:
       needs-lua: ${{ inputs.needs-lua }}
       needs-quarto: ${{ inputs.needs-quarto }}
@@ -185,7 +244,6 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     env:
-      BUMP: ${{ inputs.bump }}
       DRY_RUN: ${{ inputs.dry-run }}
       NAME: ${{ needs.plan.outputs.name }}
       VERSION: ${{ needs.plan.outputs.version }}
@@ -203,7 +261,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Set up the Git user
-        uses: mcanouil/typst-workflows/actions/setup-git-user@v1
+        uses: mcanouil/typst-workflows/actions/setup-git-user@v2
         with:
           token: ${{ steps.app-token.outputs.token }}
           app-slug: ${{ steps.app-token.outputs.app-slug }}
@@ -226,17 +284,50 @@ jobs:
           fi
 
       # The commit stays on the runner until the notes and the archives are
-      # built, so that a failure there leaves the branch as it was.
+      # built, so that a failure there leaves the branch as it was. The date is
+      # the plan's, so that a run across midnight writes one date.
       - name: Write the version
+        id: bump
+        if: ${{ inputs.bump != 'none' }}
+        uses: mcanouil/release-actions/bump@v1
+        with:
+          bump: ${{ inputs.bump }}
+          date: ${{ needs.plan.outputs.date }}
+          targets: |
+            - file: typst.toml
+              pattern: '^version = "{version}"$'
+              source: true
+            ${{ inputs.targets }}
+
+      - name: Check the version
+        if: ${{ inputs.bump != 'none' }}
+        shell: bash
+        env:
+          BUMPED: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${BUMPED}" != "${VERSION}" ]]; then
+            echo "::error::The bump wrote ${BUMPED}, but the plan job worked out ${VERSION}. Dispatch the release again."
+            exit 1
+          fi
+
+      - name: Run the after-bump command
+        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' }}
+        shell: bash
+        env:
+          AFTER_BUMP: ${{ inputs.after-bump }}
+        run: |
+          set -euo pipefail
+          if ! bash -euo pipefail -c "${AFTER_BUMP}"; then
+            echo "::error::after-bump failed: ${AFTER_BUMP}. Nothing was committed or pushed."
+            exit 1
+          fi
+
+      - name: Commit the version
         if: ${{ inputs.bump != 'none' }}
         shell: bash
         run: |
           set -euo pipefail
-          version="$(tools/bump-version.sh "${BUMP}")"
-          if [[ "${version}" != "${VERSION}" ]]; then
-            echo "::error::tools/bump-version.sh wrote ${version}, but the plan job worked out ${VERSION}. Dispatch the release again."
-            exit 1
-          fi
           git add -u
           git commit -m "ci: bump version to ${VERSION} [skip ci]"
 
@@ -245,11 +336,15 @@ jobs:
         shell: bash
         run: echo "sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
 
+      # With bump none there is no notes-file, so the section is read from the
+      # changelog by version.
       - name: Read the release notes
         id: notes
-        uses: mcanouil/typst-workflows/actions/release-notes@v1
+        uses: mcanouil/release-actions/notes@v1
         with:
+          notes-file: ${{ steps.bump.outputs.notes-file }}
           version: ${{ needs.plan.outputs.version }}
+          section-heading: ""
 
       - name: Build the package archives
         shell: bash
@@ -266,7 +361,7 @@ jobs:
           # the pull request.
           cp "${NOTES}" "${RUNNER_TEMP}/assets/notes.md"
         env:
-          NOTES: ${{ steps.notes.outputs.file }}
+          NOTES: ${{ steps.notes.outputs.body-file }}
 
       - name: Upload the archives
         uses: actions/upload-artifact@v7
@@ -293,26 +388,34 @@ jobs:
       # From here, the version is on the branch. If this step fails, dispatch
       # with bump none, which creates the missing draft.
       - name: Draft the release
-        if: ${{ !inputs.dry-run }}
+        if: ${{ !inputs.dry-run && needs.plan.outputs.state == 'none' }}
+        uses: mcanouil/release-actions/release@v1
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          body-file: ${{ steps.notes.outputs.body-file }}
+          title: "{version}"
+          target: ${{ steps.sha.outputs.sha }}
+          draft: true
+          assets: |
+            ${{ runner.temp }}/assets/${{ needs.plan.outputs.name }}-${{ needs.plan.outputs.version }}.tar.gz#${{ needs.plan.outputs.name }} ${{ needs.plan.outputs.version }} (tar.gz)
+            ${{ runner.temp }}/assets/${{ needs.plan.outputs.name }}-${{ needs.plan.outputs.version }}.zip#${{ needs.plan.outputs.name }} ${{ needs.plan.outputs.version }} (zip)
+          token: ${{ steps.app-token.outputs.token }}
+
+      # release-actions does not edit drafts, so a resubmission moves the draft
+      # and replaces its assets here.
+      - name: Update the draft
+        if: ${{ !inputs.dry-run && needs.plan.outputs.state == 'draft' }}
         shell: bash
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           SHA: ${{ steps.sha.outputs.sha }}
-          NOTES: ${{ steps.notes.outputs.file }}
-          STATE: ${{ needs.plan.outputs.state }}
+          NOTES: ${{ steps.notes.outputs.body-file }}
         run: |
           set -euo pipefail
-          assets=(
-            "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz#${NAME} ${VERSION} (tar.gz)"
+          gh release edit "${VERSION}" --target "${SHA}" --notes-file "${NOTES}"
+          gh release upload "${VERSION}" --clobber \
+            "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz#${NAME} ${VERSION} (tar.gz)" \
             "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.zip#${NAME} ${VERSION} (zip)"
-          )
-          if [[ "${STATE}" == "draft" ]]; then
-            gh release edit "${VERSION}" --target "${SHA}" --notes-file "${NOTES}"
-            gh release upload "${VERSION}" "${assets[@]}" --clobber
-          else
-            gh release create "${VERSION}" "${assets[@]}" --draft \
-              --target "${SHA}" --title "${VERSION}" --notes-file "${NOTES}"
-          fi
 
       - name: Summary
         shell: bash
@@ -357,7 +460,7 @@ jobs:
             ${{ inputs.universe-fork }}
 
       - name: Set up the Git user
-        uses: mcanouil/typst-workflows/actions/setup-git-user@v1
+        uses: mcanouil/typst-workflows/actions/setup-git-user@v2
         with:
           token: ${{ steps.app-token.outputs.token }}
           app-slug: ${{ steps.app-token.outputs.app-slug }}
@@ -373,7 +476,7 @@ jobs:
       - name: Find the draft release
         if: ${{ !inputs.dry-run }}
         id: draft
-        uses: mcanouil/typst-workflows/actions/find-release@v1
+        uses: mcanouil/typst-workflows/actions/find-release@v2
         with:
           version: ${{ needs.plan.outputs.version }}
           asset: ${{ needs.plan.outputs.name }}-${{ needs.plan.outputs.version }}.tar.gz
@@ -398,7 +501,7 @@ jobs:
             >"${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz"
 
       - name: Set up typst-package-check
-        uses: mcanouil/typst-workflows/actions/setup-package-check@v1
+        uses: mcanouil/typst-workflows/actions/setup-package-check@v2
 
       - name: Lint the archive
         shell: bash
@@ -412,7 +515,7 @@ jobs:
 
       - name: Submit
         id: submit
-        uses: mcanouil/typst-workflows/actions/universe-submit@v1
+        uses: mcanouil/typst-workflows/actions/universe-submit@v2
         with:
           name: ${{ needs.plan.outputs.name }}
           version: ${{ needs.plan.outputs.version }}

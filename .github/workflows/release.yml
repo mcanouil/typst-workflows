@@ -1,15 +1,22 @@
 name: Release
 
-# Writes the next version on the default branch, builds the package archives at
-# that commit, keeps them in a draft GitHub Release, and opens the Typst
-# Universe pull request from those archives. The Publish workflow turns the
-# draft into the release once Typst Universe serves the version.
+# Writes the next version on the default branch with mcanouil/release-actions,
+# builds the package archives at that commit, keeps them in a draft GitHub
+# Release, and opens the Typst Universe pull request from those archives. The
+# Publish workflow turns the draft into the release once Typst Universe serves
+# the version.
 on:
   workflow_call:
     inputs:
       bump:
         type: string
         required: true
+      targets:
+        type: string
+        required: true
+      after-bump:
+        type: string
+        default: ""
       dry-run:
         type: boolean
         default: false
@@ -52,6 +59,7 @@ jobs:
     outputs:
       name: ${{ steps.version.outputs.name }}
       version: ${{ steps.version.outputs.version }}
+      date: ${{ steps.version.outputs.date }}
       state: ${{ steps.release.outputs.state }}
     steps:
       - name: Refuse a release from another branch
@@ -67,39 +75,63 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # The bump is tried and undone, so that an empty Unreleased section stops
-      # the run in seconds rather than after the checks.
-      - name: Work out the version
-        id: version
+      - name: Check the bump
         shell: bash
         env:
           BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
-          name="$(awk -F'"' '/^name[[:space:]]*=/ { print $2; exit }' typst.toml)"
           case "${BUMP}" in
-          none)
-            version="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' typst.toml)"
-            ;;
-          patch | minor | major)
-            if [[ ! -x tools/bump-version.sh ]]; then
-              echo "::error::tools/bump-version.sh is missing or not executable. The repository contract in mcanouil/typst-workflows describes it."
-              exit 1
-            fi
-            if ! version="$(tools/bump-version.sh "${BUMP}" 2>"${RUNNER_TEMP}/bump.err")"; then
-              cat "${RUNNER_TEMP}/bump.err" >&2
-              echo "::error::tools/bump-version.sh ${BUMP} failed: $(tail -n 1 "${RUNNER_TEMP}/bump.err")"
-              exit 1
-            fi
-            git checkout -- .
-            ;;
+          patch | minor | major | none) ;;
           *)
             echo "::error::bump is '${BUMP}'. Use patch, minor, major, or none to resubmit the current draft."
             exit 1
             ;;
           esac
-          echo "name=${name}" >>"${GITHUB_OUTPUT}"
-          echo "version=${version}" >>"${GITHUB_OUTPUT}"
+
+      # The bump is tried and undone, so that an empty Unreleased section or a
+      # target with no match stops the run in seconds rather than after the
+      # checks. The caller's list follows the typst.toml target as it is, so
+      # each of its items must start at column 0.
+      - name: Try the bump
+        id: probe
+        if: ${{ inputs.bump != 'none' }}
+        uses: mcanouil/release-actions/bump@v1
+        with:
+          bump: ${{ inputs.bump }}
+          targets: |
+            - file: typst.toml
+              pattern: '^version = "{version}"$'
+              source: true
+            ${{ inputs.targets }}
+
+      - name: Undo the bump
+        if: ${{ inputs.bump != 'none' }}
+        shell: bash
+        run: git checkout -- .
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        env:
+          BUMP: ${{ inputs.bump }}
+          PROBE_VERSION: ${{ steps.probe.outputs.version }}
+          PROBE_DATE: ${{ steps.probe.outputs.date }}
+        run: |
+          set -euo pipefail
+          name="$(awk -F'"' '/^name[[:space:]]*=/ { print $2; exit }' typst.toml)"
+          if [[ "${BUMP}" == "none" ]]; then
+            version="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' typst.toml)"
+            date="$(date -u +%Y-%m-%d)"
+          else
+            version="${PROBE_VERSION}"
+            date="${PROBE_DATE}"
+          fi
+          {
+            echo "name=${name}"
+            echo "version=${version}"
+            echo "date=${date}"
+          } >>"${GITHUB_OUTPUT}"
           echo "Releasing ${name} ${version}."
 
       - name: Create GitHub App token
@@ -131,9 +163,10 @@ jobs:
       # bump and then stopped, so the version must already have its notes.
       - name: Read the release notes
         if: ${{ inputs.bump == 'none' }}
-        uses: mcanouil/typst-workflows/actions/release-notes@v1
+        uses: mcanouil/release-actions/notes@v1
         with:
           version: ${{ steps.version.outputs.version }}
+          section-heading: ""
 
       - name: Check the release state
         shell: bash

@@ -122,7 +122,7 @@ jobs:
           name="$(awk -F'"' '/^name[[:space:]]*=/ { print $2; exit }' typst.toml)"
           if [[ "${BUMP}" == "none" ]]; then
             version="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' typst.toml)"
-            date="$(date -u +%Y-%m-%d)"
+            date=""
           else
             version="${PROBE_VERSION}"
             date="${PROBE_DATE}"

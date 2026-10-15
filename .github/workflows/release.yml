@@ -52,6 +52,7 @@ jobs:
     outputs:
       name: ${{ steps.version.outputs.name }}
       version: ${{ steps.version.outputs.version }}
+      state: ${{ steps.release.outputs.state }}
     steps:
       - name: Refuse a release from another branch
         if: ${{ !inputs.dry-run && github.ref_name != github.event.repository.default_branch }}
@@ -116,12 +117,31 @@ jobs:
           asset: ${{ steps.version.outputs.name }}-${{ steps.version.outputs.version }}.tar.gz
           token: ${{ steps.app-token.outputs.token }}
 
+      # A resubmission after the merge on typst/packages would replace the draft
+      # with bytes that Typst Universe does not serve.
+      - name: Ask Typst Universe
+        id: served
+        if: ${{ inputs.bump == 'none' }}
+        uses: mcanouil/typst-workflows/actions/universe-served@v1
+        with:
+          name: ${{ steps.version.outputs.name }}
+          version: ${{ steps.version.outputs.version }}
+
+      # bump none on a version with no release finishes a run that pushed the
+      # bump and then stopped, so the version must already have its notes.
+      - name: Read the release notes
+        if: ${{ inputs.bump == 'none' }}
+        uses: mcanouil/typst-workflows/actions/release-notes@v1
+        with:
+          version: ${{ steps.version.outputs.version }}
+
       - name: Check the release state
         shell: bash
         env:
           BUMP: ${{ inputs.bump }}
-          DRY_RUN: ${{ inputs.dry-run }}
           STATE: ${{ steps.release.outputs.state }}
+          SERVED: ${{ steps.served.outputs.served }}
+          NAME: ${{ steps.version.outputs.name }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
@@ -129,9 +149,19 @@ jobs:
             echo "::error::A ${STATE} release ${VERSION} already exists. Dispatch with bump none to resubmit a draft, or delete the draft to start again."
             exit 1
           fi
-          if [[ "${BUMP}" == "none" && "${STATE}" != "draft" && "${DRY_RUN}" != "true" ]]; then
-            echo "::error::bump none resubmits the draft release ${VERSION}, which is ${STATE}. Dispatch with patch, minor or major."
-            exit 1
+          if [[ "${BUMP}" == "none" ]]; then
+            if [[ "${STATE}" == "published" ]]; then
+              echo "::error::${VERSION} is already published, so there is nothing to resubmit. Dispatch with patch, minor or major."
+              exit 1
+            fi
+            if [[ "${SERVED}" == "true" ]]; then
+              echo "::error::Typst Universe already serves ${NAME}:${VERSION}, so a resubmission would change bytes it has accepted. Run Publish instead."
+              exit 1
+            fi
+            if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null; then
+              echo "::error::Tag ${VERSION} exists with no published release. Delete the tag, or publish its release by hand, then dispatch again."
+              exit 1
+            fi
           fi
 
   checks:
@@ -195,9 +225,8 @@ jobs:
             exit 1
           fi
 
-      # The App bypasses the pull request rule of the default branch, and
-      # [skip ci] keeps the checks and the docs from running on a tree that the
-      # checks job has already seen.
+      # The commit stays on the runner until the notes and the archives are
+      # built, so that a failure there leaves the branch as it was.
       - name: Write the version
         if: ${{ inputs.bump != 'none' }}
         shell: bash
@@ -210,12 +239,6 @@ jobs:
           fi
           git add -u
           git commit -m "ci: bump version to ${VERSION} [skip ci]"
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            echo "Dry run: the bump commit stays on the runner."
-          elif ! git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
-            echo "::error::The App could not push the bump to ${GITHUB_REF_NAME}. Add it to the bypass list of the branch ruleset, then dispatch the release again."
-            exit 1
-          fi
 
       - name: Resolve the release commit
         id: sha
@@ -239,6 +262,11 @@ jobs:
               exit 1
             fi
           done
+          # The universe job reads the notes from the artefact, for the body of
+          # the pull request.
+          cp "${NOTES}" "${RUNNER_TEMP}/assets/notes.md"
+        env:
+          NOTES: ${{ steps.notes.outputs.file }}
 
       - name: Upload the archives
         uses: actions/upload-artifact@v7
@@ -247,6 +275,23 @@ jobs:
           path: ${{ runner.temp }}/assets
           retention-days: 7
 
+      # The App bypasses the pull request rule of the default branch, and
+      # [skip ci] keeps the checks and the docs from running on a tree that the
+      # checks job has already seen.
+      - name: Push the version
+        if: ${{ inputs.bump != 'none' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            echo "Dry run: the bump commit stays on the runner."
+          elif ! git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
+            echo "::error::The App could not push the bump to ${GITHUB_REF_NAME}. Add it to the bypass list of the branch ruleset, then dispatch the release again."
+            exit 1
+          fi
+
+      # From here, the version is on the branch. If this step fails, dispatch
+      # with bump none, which creates the missing draft.
       - name: Draft the release
         if: ${{ !inputs.dry-run }}
         shell: bash
@@ -254,13 +299,14 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           SHA: ${{ steps.sha.outputs.sha }}
           NOTES: ${{ steps.notes.outputs.file }}
+          STATE: ${{ needs.plan.outputs.state }}
         run: |
           set -euo pipefail
           assets=(
             "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz#${NAME} ${VERSION} (tar.gz)"
             "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.zip#${NAME} ${VERSION} (zip)"
           )
-          if [[ "${BUMP}" == "none" ]]; then
+          if [[ "${STATE}" == "draft" ]]; then
             gh release edit "${VERSION}" --target "${SHA}" --notes-file "${NOTES}"
             gh release upload "${VERSION}" "${assets[@]}" --clobber
           else
@@ -316,8 +362,9 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           app-slug: ${{ steps.app-token.outputs.app-slug }}
 
-      - name: Download the archives of the dry run
-        if: ${{ inputs.dry-run }}
+      # The notes, and in a dry run the archives too. A real run then replaces
+      # the archive with the one in the draft.
+      - name: Download the release artefact
         uses: actions/download-artifact@v8
         with:
           name: release-archives
@@ -373,6 +420,7 @@ jobs:
           fork: ${{ github.repository_owner }}/${{ inputs.universe-fork }}
           fork-token: ${{ steps.app-token.outputs.token }}
           pr-token: ${{ secrets.UNIVERSE_TOKEN }}
+          notes: ${{ runner.temp }}/assets/notes.md
           dry-run: ${{ inputs.dry-run }}
 
       - name: Summary

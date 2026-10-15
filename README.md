@@ -139,11 +139,13 @@ It runs four jobs:
 
 - `plan` works out the version and tries the bump, so an empty `## Unreleased` fails in seconds. It also refuses a version that already has a release.
 - `checks` runs `checks.yml` on the dispatched commit.
-- `release` writes the version with `tools/bump-version.sh` and pushes the commit `ci: bump version to X [skip ci]` straight to the default branch with the GitHub App. It then builds the archives at that commit and keeps them in a draft GitHub Release, with the changelog section as its notes.
-- `universe` runs on the `typst-universe` environment, so it waits for your approval. It lints the archive of the draft, syncs the fork of `typst/packages`, pushes the package on the branch `<name>-<version>`, and opens the pull request `<name>:<version>`, or reuses the open one.
+- `release` writes the version with `tools/bump-version.sh` and builds the archives at that commit. Only then does it push the commit `ci: bump version to X [skip ci]` straight to the default branch with the GitHub App, and keep the archives in a draft GitHub Release, with the changelog section as its notes.
+- `universe` runs on the `typst-universe` environment, so it waits for your approval. It lints the archive of the draft, syncs the fork of `typst/packages`, pushes the package on the branch `<name>-<version>`, and opens the pull request `<name>:<version>`, or reuses the open one. The body lists the changelog section as the changes.
 
 With `bump: none`, the run resubmits the current draft after review feedback on `typst/packages`.
 It rebuilds the archives from the default branch, moves the draft to that commit, and force-pushes the same branch, which updates the open pull request.
+If a run pushed the version and then stopped before the draft, `bump: none` creates the draft.
+It refuses a version that Typst Universe already serves, since that would change bytes it has accepted.
 
 With `dry-run: true`, nothing is pushed to your repository, no draft is created and no pull request is opened.
 The fork is still synced, and `git push --dry-run` checks that the App can write to it.

@@ -506,10 +506,10 @@ jobs:
       - name: Set up typst-package-check
         uses: mcanouil/typst-workflows/actions/setup-package-check@v2
 
-      # typst-package-check reads the dependencies of the package from the Typst
-      # cache and never downloads them, so a compile that imports the package
-      # fills the cache first.
-      - name: Lint the archive
+      # typst-package-check reads the dependencies of the package and of its
+      # template from the Typst cache and never downloads them, so a compile of
+      # each entrypoint fills the cache first.
+      - name: Fill the Typst package cache
         shell: bash
         run: |
           set -euo pipefail
@@ -517,12 +517,28 @@ jobs:
           mkdir -p "${check}/${NAME}"
           tar -xzf "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz" -C "${check}"
           mv "${check}/${NAME}-${VERSION}" "${check}/${NAME}/${VERSION}"
+          package="${check}/${NAME}/${VERSION}"
           probe="${RUNNER_TEMP}/probe"
           mkdir -p "${probe}/packages/preview"
           ln -s "${check}/${NAME}" "${probe}/packages/preview/${NAME}"
           printf '#import "@preview/%s:%s": *\n' "${NAME}" "${VERSION}" >"${probe}/probe.typ"
-          typst compile --package-path "${probe}/packages" "${probe}/probe.typ" "${probe}/probe.pdf"
-          typst-package-check check "${check}/${NAME}/${VERSION}"
+          sources=("${probe}/probe.typ")
+          template="$(yq -p toml -oy '.template | select(.) | .path + "/" + .entrypoint' "${package}/typst.toml")"
+          if [[ -n "${template}" ]]; then
+            sources+=("${package}/${template}")
+          fi
+          for source in "${sources[@]}"; do
+            if ! typst compile --package-path "${probe}/packages" "${source}" "${probe}/out.pdf"; then
+              echo "::error::Typst could not compile ${source#"${RUNNER_TEMP}/"} to fill the package cache. Fix the error above in the package, then dispatch the release with bump none."
+              exit 1
+            fi
+          done
+
+      - name: Lint the archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          typst-package-check check "${RUNNER_TEMP}/check/${NAME}/${VERSION}"
 
       - name: Submit
         id: submit

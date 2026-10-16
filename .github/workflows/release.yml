@@ -54,7 +54,7 @@ permissions:
 # The bump targets of both jobs. The caller's list follows the typst.toml target
 # as it is, so each of its items must start at column 0.
 env:
-  TARGETS: |
+  BUMP_TARGETS: |
     - file: typst.toml
       pattern: '^version = "{version}"$'
       source: true
@@ -107,7 +107,7 @@ jobs:
         uses: mcanouil/release-actions/bump@v1
         with:
           bump: ${{ inputs.bump }}
-          targets: ${{ env.TARGETS }}
+          targets: ${{ env.BUMP_TARGETS }}
 
       - name: Set up Lua
         if: ${{ inputs.bump != 'none' && inputs.after-bump != '' && inputs.needs-lua }}
@@ -297,7 +297,7 @@ jobs:
         with:
           bump: ${{ inputs.bump }}
           date: ${{ needs.plan.outputs.date }}
-          targets: ${{ env.TARGETS }}
+          targets: ${{ env.BUMP_TARGETS }}
 
       - name: Check the version
         if: ${{ inputs.bump != 'none' }}

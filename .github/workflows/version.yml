@@ -20,6 +20,9 @@ on:
 permissions:
   contents: read
 
+env:
+  TAG_PREFIX: v
+
 # Two runs at once would read the same latest tag and race over the rolling
 # ones. Queue rather than cancel: a cancelled run can leave the bump pushed
 # while the release is not.
@@ -54,9 +57,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          # The whole history and every tag, since the version to cut is derived
-          # from the latest one.
-          fetch-depth: 0
+          # Every tag but no history, since the bump reads the latest tag with
+          # git tag --list.
+          fetch-depth: 1
+          fetch-tags: true
           token: ${{ steps.app-token.outputs.token }}
 
       # The local copy, so that a major cut does not need the next major's tag.
@@ -72,7 +76,7 @@ jobs:
         with:
           bump: ${{ inputs.version }}
           version-source: tag
-          tag-prefix: v
+          tag-prefix: ${{ env.TAG_PREFIX }}
           targets: |
             - file: CITATION.cff
               pattern: '^version: {version}$'
@@ -85,7 +89,7 @@ jobs:
       # this step makes forgetting that impossible.
       - name: Check the README pins the major being cut
         env:
-          MAJOR: v${{ steps.bump.outputs.major }}
+          MAJOR: ${{ env.TAG_PREFIX }}${{ steps.bump.outputs.major }}
         shell: bash
         run: |
           set -euo pipefail
@@ -106,7 +110,7 @@ jobs:
       - name: Refuse an existing tag or release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          TAG: v${{ steps.bump.outputs.version }}
+          TAG: ${{ env.TAG_PREFIX }}${{ steps.bump.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -130,7 +134,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s\n' "${FILES}" | git add --pathspec-from-file=-
-          git commit -m "ci: release v${VERSION} [skip ci]"
+          git commit -m "ci: release ${TAG_PREFIX}${VERSION} [skip ci]"
           if ! git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
             echo "::error::The App could not push the bump to ${GITHUB_REF_NAME}. If the push output says the branch moved, dispatch this workflow again; otherwise add the App to the bypass list of the branch ruleset first."
             exit 1
@@ -143,7 +147,7 @@ jobs:
         with:
           notes-file: ${{ steps.bump.outputs.notes-file }}
           version: ${{ steps.bump.outputs.version }}
-          tag: v${{ steps.bump.outputs.version }}
+          tag: ${{ env.TAG_PREFIX }}${{ steps.bump.outputs.version }}
           target: ${{ steps.push.outputs.sha }}
           generate-notes: true
           token: ${{ steps.app-token.outputs.token }}
@@ -154,7 +158,7 @@ jobs:
         uses: mcanouil/release-actions/release@v1
         with:
           version: ${{ steps.bump.outputs.version }}
-          tag-prefix: v
+          tag-prefix: ${{ env.TAG_PREFIX }}
           body-file: ${{ steps.notes.outputs.body-file }}
           target: ${{ steps.push.outputs.sha }}
           latest: true
@@ -170,4 +174,4 @@ jobs:
           SHA: ${{ steps.push.outputs.sha }}
         shell: bash
         run: |
-          echo "::error::${GITHUB_REF_NAME} holds the bump ${SHA} for v${VERSION}, but the run failed after the push. If release v${VERSION} does not exist, revert that commit with a pull request, then dispatch this workflow again. If it exists, only the rolling tags are missing: move them to ${SHA} by hand."
+          echo "::error::${GITHUB_REF_NAME} holds the bump ${SHA} for ${TAG_PREFIX}${VERSION}, but the run failed after the push. If release ${TAG_PREFIX}${VERSION} does not exist, revert that commit with a pull request, then dispatch this workflow again. If it exists, only the rolling tags are missing: move them to ${SHA} by hand."

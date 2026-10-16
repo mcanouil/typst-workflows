@@ -51,6 +51,15 @@ on:
 permissions:
   contents: read
 
+# The bump targets of both jobs. The caller's list follows the typst.toml target
+# as it is, so each of its items must start at column 0.
+env:
+  BUMP_TARGETS: |
+    - file: typst.toml
+      pattern: '^version = "{version}"$'
+      source: true
+    ${{ inputs.targets }}
+
 jobs:
   plan:
     name: Plan the release
@@ -91,19 +100,14 @@ jobs:
 
       # The bump is tried and undone, so that an empty Unreleased section or a
       # target with no match stops the run in seconds rather than after the
-      # checks. The caller's list follows the typst.toml target as it is, so
-      # each of its items must start at column 0.
+      # checks.
       - name: Try the bump
         id: probe
         if: ${{ inputs.bump != 'none' }}
         uses: mcanouil/release-actions/bump@v1
         with:
           bump: ${{ inputs.bump }}
-          targets: |
-            - file: typst.toml
-              pattern: '^version = "{version}"$'
-              source: true
-            ${{ inputs.targets }}
+          targets: ${{ env.BUMP_TARGETS }}
 
       - name: Set up Lua
         if: ${{ inputs.bump != 'none' && inputs.after-bump != '' && inputs.needs-lua }}
@@ -293,11 +297,7 @@ jobs:
         with:
           bump: ${{ inputs.bump }}
           date: ${{ needs.plan.outputs.date }}
-          targets: |
-            - file: typst.toml
-              pattern: '^version = "{version}"$'
-              source: true
-            ${{ inputs.targets }}
+          targets: ${{ env.BUMP_TARGETS }}
 
       - name: Check the version
         if: ${{ inputs.bump != 'none' }}

@@ -77,6 +77,7 @@ jobs:
           bump: ${{ inputs.version }}
           version-source: tag
           tag-prefix: ${{ env.TAG_PREFIX }}
+          token: ${{ steps.app-token.outputs.token }}
           targets: |
             - file: CITATION.cff
               pattern: '^version: {version}$'
@@ -104,24 +105,6 @@ jobs:
             exit 1
           fi
           echo "README.md pins ${MAJOR}."
-
-      # The release step refuses an existing tag or release too, but only after
-      # the push, which would leave the bump on the default branch.
-      - name: Refuse an existing tag or release
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          TAG: ${{ env.TAG_PREFIX }}${{ steps.bump.outputs.version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
-            echo "::error::Tag ${TAG} already exists. Delete it, or create its release by hand, then dispatch this workflow again."
-            exit 1
-          fi
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "::error::A release ${TAG} already exists, perhaps as a draft. Delete it, then dispatch this workflow again."
-            exit 1
-          fi
 
       # The App is exempt from the pull request rule of the default branch, and
       # [skip ci] keeps CI from running again on a tree it has checked.

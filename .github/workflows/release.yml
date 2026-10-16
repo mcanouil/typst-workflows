@@ -500,10 +500,13 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/releases/assets/${ASSET_ID}" \
             >"${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz"
 
+      - name: Set up Typst
+        uses: mcanouil/typst-workflows/actions/setup-typst@v2
+
       - name: Set up typst-package-check
         uses: mcanouil/typst-workflows/actions/setup-package-check@v2
 
-      - name: Lint the archive
+      - name: Extract the archive
         shell: bash
         run: |
           set -euo pipefail
@@ -511,7 +514,19 @@ jobs:
           mkdir -p "${check}/${NAME}"
           tar -xzf "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz" -C "${check}"
           mv "${check}/${NAME}-${VERSION}" "${check}/${NAME}/${VERSION}"
-          typst-package-check check "${check}/${NAME}/${VERSION}"
+
+      - name: Fill the Typst package cache
+        uses: mcanouil/typst-workflows/actions/fill-package-cache@v2
+        with:
+          package: ${{ runner.temp }}/check/${{ needs.plan.outputs.name }}/${{ needs.plan.outputs.version }}
+          name: ${{ needs.plan.outputs.name }}
+          version: ${{ needs.plan.outputs.version }}
+
+      - name: Lint the archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          typst-package-check check "${RUNNER_TEMP}/check/${NAME}/${VERSION}"
 
       - name: Submit
         id: submit

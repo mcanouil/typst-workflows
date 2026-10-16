@@ -1,0 +1,26 @@
+name: Fill the Typst package cache
+description: Compile a package and its template entrypoint, so that typst-package-check finds their dependencies in the cache.
+
+inputs:
+  package:
+    description: "Directory of the package, the one that holds typst.toml."
+    required: true
+  name:
+    description: "Name of the package."
+    required: true
+  version:
+    description: "Version of the package."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Compile the package and its template
+      shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+        NAME: ${{ inputs.name }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        "${GITHUB_ACTION_PATH}/fill.sh" "${PACKAGE}" "${NAME}" "${VERSION}" "${RUNNER_TEMP}/fill-package-cache"

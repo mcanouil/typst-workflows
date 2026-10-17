@@ -165,6 +165,15 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
 
+      # The release job pushes the version as the App, so a missing App stops
+      # here rather than after the checks.
+      - name: Refuse to release without the App
+        if: ${{ !inputs.dry-run && steps.token.outputs.source != 'app' }}
+        shell: bash
+        run: |
+          echo "::error::The release pushes the version to the default branch as the GitHub App. Set the APP_ID variable and the APP_KEY secret, add the App to the bypass list of the branch ruleset, then dispatch the release again."
+          exit 1
+
       - name: Find the release
         id: release
         uses: mcanouil/typst-workflows/actions/find-release@v2

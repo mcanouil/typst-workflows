@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- refactor: Rely on release-actions v1.3.0 for the App check, the branch check and `after-bump`, and drop the steps that did this in the workflows. (#13)
+- feat: The release commit now includes the files that `after-bump` creates, except files that `.gitignore` matches. Before, it included only tracked files. (#13)
+
 ## 2.1.0 (2026-10-17)
 
 - refactor: Get tokens from the release-actions `token` action and push the version with its `land` action.

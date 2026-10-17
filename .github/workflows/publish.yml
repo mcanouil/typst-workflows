@@ -47,15 +47,9 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
-
-      # The default token cannot see a draft release, so without the App the
-      # draft would look missing.
-      - name: Refuse to publish without the App
-        if: ${{ steps.token.outputs.source != 'app' }}
-        shell: bash
-        run: |
-          echo "::error::Publish reads the draft release as the GitHub App. Set the APP_ID variable and the APP_KEY secret, and pass them with secrets: inherit, then dispatch Publish again."
-          exit 1
+          # The default token cannot see a draft release, so without the App
+          # the draft would look missing.
+          require-app: true
 
       - name: Find the release
         id: release

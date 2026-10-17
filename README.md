@@ -141,6 +141,26 @@ It runs four jobs:
 - `release` bumps the version with [release-actions](https://github.com/mcanouil/release-actions) `bump`, in `typst.toml` and in each file of `targets`, runs `after-bump`, and builds the archives at that commit. Only then does it push the commit `ci: release X [skip ci]` straight to the default branch with the GitHub App, through the release-actions `land` action, and keep the archives in a draft GitHub Release, with the changelog section as its notes.
 - `universe` runs on the `typst-universe` environment, so it waits for your approval. It compiles the package of the draft and its template entrypoint, which fills the Typst package cache, then lints the archive, syncs the fork of `typst/packages`, pushes the package on the branch `<name>-<version>`, and opens the pull request `<name>:<version>`, or reuses the open one. The body lists the changelog section as the changes.
 
+```mermaid
+flowchart TD
+  caller(["caller release.yml<br/>bump, dry-run"]) --> plan
+  subgraph plan["plan"]
+    direction TB
+    p1["try the bump and after-bump, then undo"] --> p2["token<br/>(require-app unless dry-run)"]
+    p2 --> p3["find the release, work out the state"]
+  end
+  plan --> checks["checks.yml"]
+  plan --> release
+  checks --> release
+  subgraph release["release"]
+    direction TB
+    r1["refuse a moved branch"] --> r2["bump with after-bump"]
+    r2 --> r3["notes, build the archives"]
+    r3 --> r4["land: push to the default branch<br/>(not on a dry run)"] --> r5["draft or update the release"]
+  end
+  release --> universe["universe<br/>lint the archive, submit to Typst Universe"]
+```
+
 With `bump: none`, the run resubmits the current draft after review feedback on `typst/packages`.
 It rebuilds the archives from the default branch, moves the draft to that commit, and force-pushes the same branch, which updates the open pull request.
 If a run pushed the version and then stopped before the draft, `bump: none` creates the draft.
@@ -155,7 +175,7 @@ A dry run can start from any branch, while a real release refuses anything but t
 | `bump` | string | | `patch`, `minor`, `major`, or `none` to resubmit the draft. |
 | `dry-run` | boolean | `false` | Rehearses the whole run with no push, no draft and no pull request. |
 | `targets` | string | `""` | YAML list of [release-actions `bump` targets](https://github.com/mcanouil/release-actions#bump) for the files other than `typst.toml`, which the workflow adds itself. Each item starts at column 0. |
-| `after-bump` | string | `""` | A command run after the bump and before the commit, such as `tools/version-check.sh`. The plan job also runs it on its trial bump, so a broken command fails before the checks. A failure stops the run before anything is pushed. It may change tracked files, which the bump commit includes; files it creates are not committed. |
+| `after-bump` | string | `""` | A command run after the bump and before the commit, such as `tools/version-check.sh`. The plan job also runs it on its trial bump, so a broken command fails before the checks. A failure stops the run before anything is pushed. The bump commit includes the files it changes or creates, except files that `.gitignore` matches. |
 | `needs-lua`, `needs-quarto`, `needs-imagemagick`, `check-args`, `failure-artifacts`, `shellcheck-paths`, `shfmt-paths` | | as in `checks.yml` | Passed on to the checks. |
 | `universe-fork` | string | `typst-universe-packages` | The fork of `typst/packages`, under the same owner. |
 

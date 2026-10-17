@@ -71,6 +71,9 @@ jobs:
       date: ${{ steps.version.outputs.date }}
       state: ${{ steps.release.outputs.state }}
     steps:
+      # land refuses a release off the default branch, but bump none never
+      # calls land, and a real run must not draft or submit from another
+      # branch. Stopping here also spares the checks.
       - name: Refuse a release from another branch
         if: ${{ !inputs.dry-run && github.ref_name != github.event.repository.default_branch }}
         shell: bash
@@ -98,9 +101,15 @@ jobs:
             ;;
           esac
 
-      # The bump is tried and undone, so that an empty Unreleased section or a
-      # target with no match stops the run in seconds rather than after the
-      # checks.
+      - name: Set up Lua
+        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' && inputs.needs-lua }}
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+
+      # The bump and after-bump are tried and undone, so that an empty Unreleased
+      # section, a target with no match, or a broken after-bump command stops
+      # the run in seconds rather than after the checks.
       - name: Try the bump
         id: probe
         if: ${{ inputs.bump != 'none' }}
@@ -108,26 +117,7 @@ jobs:
         with:
           bump: ${{ inputs.bump }}
           targets: ${{ env.BUMP_TARGETS }}
-
-      - name: Set up Lua
-        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' && inputs.needs-lua }}
-        uses: leafo/gh-actions-lua@v13
-        with:
-          luaVersion: "5.4"
-
-      # after-bump is tried on the probe too, so a missing or broken command
-      # fails before the checks rather than after them.
-      - name: Try the after-bump command
-        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' }}
-        shell: bash
-        env:
-          AFTER_BUMP: ${{ inputs.after-bump }}
-        run: |
-          set -euo pipefail
-          if ! bash -euo pipefail -c "${AFTER_BUMP}"; then
-            echo "::error::after-bump failed on the probe: ${AFTER_BUMP}. Fix it, then dispatch the release again."
-            exit 1
-          fi
+          after-bump: ${{ inputs.after-bump }}
 
       - name: Undo the bump
         if: ${{ inputs.bump != 'none' }}
@@ -158,21 +148,15 @@ jobs:
           } >>"${GITHUB_OUTPUT}"
           echo "Releasing ${name} ${version}."
 
+      # The release job pushes the version as the App, so a missing App stops
+      # here rather than after the checks. A dry run pushes nothing.
       - name: Get the token
         id: token
         uses: mcanouil/release-actions/token@v1
         with:
           app-id: ${{ vars.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
-
-      # The release job pushes the version as the App, so a missing App stops
-      # here rather than after the checks.
-      - name: Refuse to release without the App
-        if: ${{ !inputs.dry-run && steps.token.outputs.source != 'app' }}
-        shell: bash
-        run: |
-          echo "::error::The release pushes the version to the default branch as the GitHub App. Set the APP_ID variable and the APP_KEY secret, add the App to the bypass list of the branch ruleset, then dispatch the release again."
-          exit 1
+          require-app: ${{ !inputs.dry-run }}
 
       - name: Find the release
         id: release
@@ -301,6 +285,7 @@ jobs:
           bump: ${{ inputs.bump }}
           date: ${{ needs.plan.outputs.date }}
           targets: ${{ env.BUMP_TARGETS }}
+          after-bump: ${{ inputs.after-bump }}
 
       - name: Check the version
         if: ${{ inputs.bump != 'none' }}
@@ -313,32 +298,6 @@ jobs:
             echo "::error::The bump wrote ${BUMPED}, but the plan job worked out ${VERSION}. Dispatch the release again."
             exit 1
           fi
-
-      - name: Run the after-bump command
-        if: ${{ inputs.bump != 'none' && inputs.after-bump != '' }}
-        shell: bash
-        env:
-          AFTER_BUMP: ${{ inputs.after-bump }}
-        run: |
-          set -euo pipefail
-          if ! bash -euo pipefail -c "${AFTER_BUMP}"; then
-            echo "::error::after-bump failed: ${AFTER_BUMP}. Nothing was committed or pushed."
-            exit 1
-          fi
-
-      # Every tracked file that the bump and after-bump changed, listed before
-      # the build can write anything into the tree.
-      - name: List the version files
-        id: files
-        if: ${{ inputs.bump != 'none' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            echo "files<<VERSION_FILES"
-            git diff --name-only
-            echo "VERSION_FILES"
-          } >>"${GITHUB_OUTPUT}"
 
       # With bump none there is no notes-file, so the section is read from the
       # changelog by version.
@@ -383,7 +342,7 @@ jobs:
         uses: mcanouil/release-actions/land@v1
         with:
           mode: push
-          files: ${{ steps.files.outputs.files }}
+          files: ${{ steps.bump.outputs.files }}
           version: ${{ needs.plan.outputs.version }}
 
       # From here, the version is on the branch. If this step fails, dispatch

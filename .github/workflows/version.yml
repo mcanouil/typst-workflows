@@ -69,17 +69,28 @@ jobs:
               pattern: '^version: {version}$'
             - file: CITATION.cff
               pattern: '^date-released: "{date}"$'
-            # The usage examples pin the major being cut. Each pattern names a
-            # workflow of this repository, so pins such as actions/checkout@v7
-            # stay as they are.
-            - file: README.md
-              pattern: 'typst-workflows/.github/workflows/checks.yml@v{major}'
-            - file: README.md
-              pattern: 'typst-workflows/.github/workflows/docs.yml@v{major}'
-            - file: README.md
-              pattern: 'typst-workflows/.github/workflows/release.yml@v{major}'
-            - file: README.md
-              pattern: 'typst-workflows/.github/workflows/publish.yml@v{major}'
+
+      # The README tells callers which major to pin, and the workflows and
+      # actions pin each other at the same major. A major cut therefore lands
+      # all those pins as an ordinary pull request first, and this step makes
+      # forgetting that impossible.
+      - name: Check the README pins the major being cut
+        env:
+          MAJOR: ${{ env.TAG_PREFIX }}${{ steps.bump.outputs.major }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pinned="$(grep -oE "${GITHUB_REPOSITORY}/[^ \"]+@[^ \"]+" README.md \
+            | sed 's/.*@//' | sort -u || true)"
+          if [[ -z "${pinned}" ]]; then
+            echo "::error::No typst-workflows reference found in README.md; expected the usage examples to pin ${MAJOR}."
+            exit 1
+          fi
+          if [[ "${pinned}" != "${MAJOR}" ]]; then
+            echo "::error::README.md pins $(tr '\n' ' ' <<<"${pinned}")but ${MAJOR} is being cut. Land a pull request repointing the usage examples at ${MAJOR}, then dispatch this workflow again."
+            exit 1
+          fi
+          echo "README.md pins ${MAJOR}."
 
       # The App is exempt from the pull request rule of the default branch, and
       # the [skip ci] of the release message keeps CI from running again on a

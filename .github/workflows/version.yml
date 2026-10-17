@@ -47,12 +47,21 @@ jobs:
           echo "::error::Releases are cut from ${DEFAULT_BRANCH}, not ${REF_NAME}."
           exit 1
 
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v3
+      - name: Get the token
+        id: token
+        uses: mcanouil/release-actions/token@v1
         with:
-          client-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_KEY }}
+          app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+
+      # The default token cannot pass the pull request rule of the default
+      # branch, so a missing App stops the run before anything is written.
+      - name: Refuse to release without the App
+        if: ${{ steps.token.outputs.source != 'app' }}
+        shell: bash
+        run: |
+          echo "::error::The release pushes to the default branch as the GitHub App. Set the APP_ID variable and the APP_KEY secret, then dispatch this workflow again."
+          exit 1
 
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -61,14 +70,7 @@ jobs:
           # git tag --list.
           fetch-depth: 1
           fetch-tags: true
-          token: ${{ steps.app-token.outputs.token }}
-
-      # The local copy, so that a major cut does not need the next major's tag.
-      - name: Set up the Git user
-        uses: ./actions/setup-git-user
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          app-slug: ${{ steps.app-token.outputs.app-slug }}
+          token: ${{ steps.token.outputs.token }}
 
       - name: Bump the version
         id: bump
@@ -77,7 +79,7 @@ jobs:
           bump: ${{ inputs.version }}
           version-source: tag
           tag-prefix: ${{ env.TAG_PREFIX }}
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
           targets: |
             - file: CITATION.cff
               pattern: '^version: {version}$'
@@ -107,22 +109,16 @@ jobs:
           echo "README.md pins ${MAJOR}."
 
       # The App is exempt from the pull request rule of the default branch, and
-      # [skip ci] keeps CI from running again on a tree it has checked.
+      # the [skip ci] of the release message keeps CI from running again on a
+      # tree it has checked.
       - name: Push the version
         id: push
-        env:
-          VERSION: ${{ steps.bump.outputs.version }}
-          FILES: ${{ steps.bump.outputs.files }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf '%s\n' "${FILES}" | git add --pathspec-from-file=-
-          git commit -m "ci: release ${TAG_PREFIX}${VERSION} [skip ci]"
-          if ! git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
-            echo "::error::The App could not push the bump to ${GITHUB_REF_NAME}. If the push output says the branch moved, dispatch this workflow again; otherwise add the App to the bypass list of the branch ruleset first."
-            exit 1
-          fi
-          echo "sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
+        uses: mcanouil/release-actions/land@v1
+        with:
+          mode: push
+          files: ${{ steps.bump.outputs.files }}
+          version: ${{ steps.bump.outputs.version }}
+          tag-prefix: ${{ env.TAG_PREFIX }}
 
       - name: Compose the release body
         id: notes
@@ -133,7 +129,7 @@ jobs:
           tag: ${{ env.TAG_PREFIX }}${{ steps.bump.outputs.version }}
           target: ${{ steps.push.outputs.sha }}
           generate-notes: true
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       # Lightweight tags, deliberately: GitHub does not peel an annotated tag to
       # its commit when it resolves a relative workflow reference.
@@ -146,7 +142,7 @@ jobs:
           target: ${{ steps.push.outputs.sha }}
           latest: true
           rolling: true
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       # A new dispatch would stop on the emptied Unreleased section, and then on
       # the existing changelog heading, so the pushed bump has to go first.

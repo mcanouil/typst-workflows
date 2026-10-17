@@ -41,12 +41,21 @@ jobs:
           echo "name=$(awk -F'"' '/^name[[:space:]]*=/ { print $2; exit }' typst.toml)" >>"${GITHUB_OUTPUT}"
           echo "version=$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' typst.toml)" >>"${GITHUB_OUTPUT}"
 
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v3
+      - name: Get the token
+        id: token
+        uses: mcanouil/release-actions/token@v1
         with:
-          client-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_KEY }}
+          app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+
+      # The default token cannot see a draft release, so without the App the
+      # draft would look missing.
+      - name: Refuse to publish without the App
+        if: ${{ steps.token.outputs.source != 'app' }}
+        shell: bash
+        run: |
+          echo "::error::Publish reads the draft release as the GitHub App. Set the APP_ID variable and the APP_KEY secret, and pass them with secrets: inherit, then dispatch Publish again."
+          exit 1
 
       - name: Find the release
         id: release
@@ -54,7 +63,7 @@ jobs:
         with:
           version: ${{ steps.version.outputs.version }}
           asset: ${{ steps.version.outputs.name }}-${{ steps.version.outputs.version }}.tar.gz
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       - name: Ask Typst Universe
         id: served
@@ -67,7 +76,7 @@ jobs:
       - name: Publish the draft
         shell: bash
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.token.outputs.token }}
           NAME: ${{ steps.version.outputs.name }}
           VERSION: ${{ steps.version.outputs.version }}
           STATE: ${{ steps.release.outputs.state }}

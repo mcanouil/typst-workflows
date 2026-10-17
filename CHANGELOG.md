@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- refactor: Get tokens from the release-actions `token` action and push the version with its `land` action.
+  The release commit is now `ci: release X [skip ci]`. (#12)
+- refactor: Remove the `setup-git-user` action, which no workflow uses any more.
+  The release-actions `token` action sets the same identity. (#12)
+
 ## 2.0.1 (2026-10-16)
 
 - fix: The Typst Universe job fills the Typst package cache before it lints the archive, so a package with dependencies no longer fails there. (#9)

@@ -158,12 +158,21 @@ jobs:
           } >>"${GITHUB_OUTPUT}"
           echo "Releasing ${name} ${version}."
 
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v3
+      - name: Get the token
+        id: token
+        uses: mcanouil/release-actions/token@v1
         with:
-          client-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_KEY }}
+          app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+
+      # The release job pushes the version as the App, so a missing App stops
+      # here rather than after the checks.
+      - name: Refuse to release without the App
+        if: ${{ !inputs.dry-run && steps.token.outputs.source != 'app' }}
+        shell: bash
+        run: |
+          echo "::error::The release pushes the version to the default branch as the GitHub App. Set the APP_ID variable and the APP_KEY secret, add the App to the bypass list of the branch ruleset, then dispatch the release again."
+          exit 1
 
       - name: Find the release
         id: release
@@ -171,7 +180,7 @@ jobs:
         with:
           version: ${{ steps.version.outputs.version }}
           asset: ${{ steps.version.outputs.name }}-${{ steps.version.outputs.version }}.tar.gz
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       # A resubmission after the merge on typst/packages would replace the draft
       # with bytes that Typst Universe does not serve.
@@ -246,29 +255,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      sha: ${{ steps.sha.outputs.sha }}
+      sha: ${{ steps.land.outputs.sha || github.sha }}
     env:
       DRY_RUN: ${{ inputs.dry-run }}
       NAME: ${{ needs.plan.outputs.name }}
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - name: Create GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v3
+      - name: Get the token
+        id: token
+        uses: mcanouil/release-actions/token@v1
         with:
-          client-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_KEY }}
+          app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
 
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          token: ${{ steps.app-token.outputs.token }}
-
-      - name: Set up the Git user
-        uses: mcanouil/typst-workflows/actions/setup-git-user@v2
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          app-slug: ${{ steps.app-token.outputs.app-slug }}
+          token: ${{ steps.token.outputs.token }}
 
       - name: Set up Lua
         if: ${{ inputs.needs-lua }}
@@ -323,18 +326,19 @@ jobs:
             exit 1
           fi
 
-      - name: Commit the version
+      # Every tracked file that the bump and after-bump changed, listed before
+      # the build can write anything into the tree.
+      - name: List the version files
+        id: files
         if: ${{ inputs.bump != 'none' }}
         shell: bash
         run: |
           set -euo pipefail
-          git add -u
-          git commit -m "ci: bump version to ${VERSION} [skip ci]"
-
-      - name: Resolve the release commit
-        id: sha
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
+          {
+            echo "files<<VERSION_FILES"
+            git diff --name-only
+            echo "VERSION_FILES"
+          } >>"${GITHUB_OUTPUT}"
 
       # With bump none there is no notes-file, so the section is read from the
       # changelog by version.
@@ -372,18 +376,15 @@ jobs:
 
       # The App bypasses the pull request rule of the default branch, and
       # [skip ci] keeps the checks and the docs from running on a tree that the
-      # checks job has already seen.
+      # checks job has already seen. A dry run keeps the bump on the runner.
       - name: Push the version
-        if: ${{ inputs.bump != 'none' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            echo "Dry run: the bump commit stays on the runner."
-          elif ! git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
-            echo "::error::The App could not push the bump to ${GITHUB_REF_NAME}. Add it to the bypass list of the branch ruleset, then dispatch the release again."
-            exit 1
-          fi
+        id: land
+        if: ${{ inputs.bump != 'none' && !inputs.dry-run }}
+        uses: mcanouil/release-actions/land@v1
+        with:
+          mode: push
+          files: ${{ steps.files.outputs.files }}
+          version: ${{ needs.plan.outputs.version }}
 
       # From here, the version is on the branch. If this step fails, dispatch
       # with bump none, which creates the missing draft.
@@ -394,12 +395,12 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           body-file: ${{ steps.notes.outputs.body-file }}
           title: "{version}"
-          target: ${{ steps.sha.outputs.sha }}
+          target: ${{ steps.land.outputs.sha || github.sha }}
           draft: true
           assets: |
             ${{ runner.temp }}/assets/${{ needs.plan.outputs.name }}-${{ needs.plan.outputs.version }}.tar.gz#${{ needs.plan.outputs.name }} ${{ needs.plan.outputs.version }} (tar.gz)
             ${{ runner.temp }}/assets/${{ needs.plan.outputs.name }}-${{ needs.plan.outputs.version }}.zip#${{ needs.plan.outputs.name }} ${{ needs.plan.outputs.version }} (zip)
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       # release-actions does not edit drafts, so a resubmission moves the draft
       # and replaces its assets here.
@@ -407,8 +408,8 @@ jobs:
         if: ${{ !inputs.dry-run && needs.plan.outputs.state == 'draft' }}
         shell: bash
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          SHA: ${{ steps.sha.outputs.sha }}
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SHA: ${{ steps.land.outputs.sha || github.sha }}
           NOTES: ${{ steps.notes.outputs.body-file }}
         run: |
           set -euo pipefail
@@ -420,7 +421,7 @@ jobs:
       - name: Summary
         shell: bash
         env:
-          SHA: ${{ steps.sha.outputs.sha }}
+          SHA: ${{ steps.land.outputs.sha || github.sha }}
         run: |
           {
             echo "## Release ${NAME} ${VERSION}"
@@ -459,11 +460,13 @@ jobs:
             ${{ github.event.repository.name }}
             ${{ inputs.universe-fork }}
 
+      # The git identity of the App, for the commit on the fork. The token
+      # above stays, because it reaches the fork as well as this repository.
       - name: Set up the Git user
-        uses: mcanouil/typst-workflows/actions/setup-git-user@v2
+        uses: mcanouil/release-actions/token@v1
         with:
-          token: ${{ steps.app-token.outputs.token }}
-          app-slug: ${{ steps.app-token.outputs.app-slug }}
+          app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
 
       # The notes, and in a dry run the archives too. A real run then replaces
       # the archive with the one in the draft.

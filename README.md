@@ -138,7 +138,7 @@ It runs four jobs:
 
 - `plan` works out the version and tries the bump, so an empty `## Unreleased` fails in seconds. It also refuses a version that already has a release.
 - `checks` runs `checks.yml` on the dispatched commit.
-- `release` bumps the version with [release-actions](https://github.com/mcanouil/release-actions) `bump`, in `typst.toml` and in each file of `targets`, runs `after-bump`, and builds the archives at that commit. Only then does it push the commit `ci: bump version to X [skip ci]` straight to the default branch with the GitHub App, and keep the archives in a draft GitHub Release, with the changelog section as its notes.
+- `release` bumps the version with [release-actions](https://github.com/mcanouil/release-actions) `bump`, in `typst.toml` and in each file of `targets`, runs `after-bump`, and builds the archives at that commit. Only then does it push the commit `ci: release X [skip ci]` straight to the default branch with the GitHub App, through the release-actions `land` action, and keep the archives in a draft GitHub Release, with the changelog section as its notes.
 - `universe` runs on the `typst-universe` environment, so it waits for your approval. It compiles the package of the draft and its template entrypoint, which fills the Typst package cache, then lints the archive, syncs the fork of `typst/packages`, pushes the package on the branch `<name>-<version>`, and opens the pull request `<name>:<version>`, or reuses the open one. The body lists the changelog section as the changes.
 
 With `bump: none`, the run resubmits the current draft after review feedback on `typst/packages`.
@@ -279,7 +279,6 @@ The workflows are built from these composite actions, which you can also use on 
 - `actions/lint-shell` installs shfmt and runs shellcheck and shfmt.
 - `actions/setup-package-check` installs `typst-package-check`, cached by the upstream revision.
 - `actions/docs-matrix` builds the docs render matrix and the `versions.json` list from the latest tag and `site-url`.
-- `actions/setup-git-user` makes Git commit as the GitHub App that owns a token.
 - `actions/find-release` finds the release of a version, draft or published, and the id of one of its assets.
 - `actions/fill-package-cache` compiles a package and its template entrypoint, so that `typst-package-check` finds their dependencies in the Typst cache.
 - `actions/universe-served` asks `packages.typst.org` whether it serves a package version.

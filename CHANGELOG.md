@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 2.1.0 (2026-10-17)
+
 - refactor: Get tokens from the release-actions `token` action and push the version with its `land` action.
   The release commit is now `ci: release X [skip ci]`. (#12)
 - refactor: Remove the `setup-git-user` action, which no workflow uses any more.

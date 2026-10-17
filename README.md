@@ -168,7 +168,7 @@ It refuses a version that Typst Universe already serves, since that would change
 
 With `dry-run: true`, nothing is pushed to your repository, no draft is created and no pull request is opened.
 The fork is still synced, and `git push --dry-run` checks that the App can write to it.
-A dry run can start from any branch, while the `land` action refuses a real release from anything but the default branch.
+A dry run can start from any branch, while a real release refuses anything but the default branch.
 
 | Input | Type | Default | Use |
 | --- | --- | --- | --- |

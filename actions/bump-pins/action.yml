@@ -41,5 +41,13 @@ runs:
         MANIFEST: ${{ inputs.manifest }}
       run: |
         set -euo pipefail
-        tags="$("${GITHUB_ACTION_PATH}/latest-tags.sh" "${MANIFEST}")"
-        "${GITHUB_ACTION_PATH}/bump-pins.sh" "${MANIFEST}" <<<"${tags}" >>"${GITHUB_OUTPUT}"
+        # The scripts write their errors to stderr; repeat them as annotations.
+        errors="${RUNNER_TEMP}/bump-pins.err"
+        annotate() {
+          while IFS= read -r line; do
+            echo "::error::${line}"
+          done <"${errors}"
+          exit 1
+        }
+        tags="$("${GITHUB_ACTION_PATH}/latest-tags.sh" "${MANIFEST}" 2>"${errors}")" || annotate
+        "${GITHUB_ACTION_PATH}/bump-pins.sh" "${MANIFEST}" <<<"${tags}" 2>"${errors}" >>"${GITHUB_OUTPUT}" || annotate

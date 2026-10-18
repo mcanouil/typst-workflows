@@ -21,7 +21,11 @@ latest() {
 
 rows=""
 if [[ -n "${PACKAGES//[[:space:]]/}" ]]; then
-  if [[ "$(yq -r 'tag' <<<"${PACKAGES}" 2>/dev/null || true)" != "!!seq" ]]; then
+  if ! kind="$(yq -r 'tag' <<<"${PACKAGES}" 2>&1)"; then
+    printf 'could not parse packages as YAML: %s\n' "${kind}" >&2
+    exit 1
+  fi
+  if [[ "${kind}" != "!!seq" ]]; then
     printf 'packages is not a YAML list. Write one "- name: ..." entry per package.\n' >&2
     exit 1
   fi

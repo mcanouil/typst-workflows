@@ -19,6 +19,26 @@ if [[ ! -f "${manifest}" ]]; then
 fi
 
 version_re='[0-9][0-9A-Za-z.+-]*'
+
+# True when version $1 is above version $2. A release sorts above its own
+# pre-releases, so 0.15.1 is above 0.15.1-rc1.
+is_newer() {
+  local new_base="${1%%-*}" old_base="${2%%-*}" top
+  if [[ "${new_base}" == "${old_base}" ]]; then
+    if [[ "$1" != *-* && "$2" == *-* ]]; then
+      return 0
+    fi
+    if [[ "$1" == *-* && "$2" == *-* && "$1" != "$2" ]]; then
+      top="$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)"
+      [[ "${top}" == "$1" ]]
+      return
+    fi
+    return 1
+  fi
+  top="$(printf '%s\n%s\n' "${new_base}" "${old_base}" | sort -V | tail -n 1)"
+  [[ "${top}" == "${new_base}" ]]
+}
+
 subject_parts=()
 body_lines=()
 changed=()
@@ -43,7 +63,7 @@ while IFS=$'\t' read -r name file repository tag; do
       exit 1
     fi
   fi
-  [[ "${current}" != "${latest}" ]] || continue
+  is_newer "${latest}" "${current}" || continue
 
   if [[ "${name}" == "typst" ]]; then
     LATEST="${latest}" perl -pi -e 's/^(compiler\s*=\s*")[^"]+/${1}$ENV{LATEST}/' "${manifest}"

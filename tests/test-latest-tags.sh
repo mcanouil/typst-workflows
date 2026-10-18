@@ -51,3 +51,8 @@ err="$(PACKAGES='- name: cetz
   file: src/deps.typ' "${script}" typst.toml 2>&1 >/dev/null)" || status=$?
 assert_status 1 "${status}" "entry without repository"
 assert_contains "${err}" "name, repository and file" "entry without repository message"
+
+status=0
+err="$(PACKAGES='- name: [unclosed' "${script}" typst.toml 2>&1 >/dev/null)" || status=$?
+assert_status 1 "${status}" "packages not YAML"
+assert_contains "${err}" "could not parse packages" "packages not YAML message"

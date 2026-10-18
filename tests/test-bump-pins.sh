@@ -79,3 +79,17 @@ status=0
 err="$(printf 'typst\tmissing.toml\ttypst/typst\tv0.15.1\n' | "${script}" missing.toml 2>&1 >/dev/null)" || status=$?
 assert_status 1 "${status}" "missing manifest"
 assert_contains "${err}" "manifest not found: missing.toml" "missing manifest message"
+
+# A pin above the latest release is left alone.
+reset
+printf '[package]\nname = "demo"\ncompiler = "0.16.0-rc1"\n' >typst.toml
+out="$(printf 'typst\ttypst.toml\ttypst/typst\tv0.15.1\n' | "${script}" typst.toml)"
+assert_eq "false" "$(value any "${out}")" "no downgrade any"
+assert_contains "$(cat typst.toml)" 'compiler = "0.16.0-rc1"' "no downgrade keeps the pin"
+
+# Two packages pinned in one file list that file once.
+reset
+printf '#import "@preview/cetz:0.5.2"\n#import "@preview/cetz-plot:0.1.2"\n' >src/deps.typ
+out="$(printf 'typst\ttypst.toml\ttypst/typst\tv0.15.0\ncetz\tsrc/deps.typ\tcetz-package/cetz\t0.5.3\ncetz-plot\tsrc/deps.typ\tcetz-package/cetz-plot\t0.1.3\n' | "${script}" typst.toml)"
+assert_eq "src/deps.typ" "$(block files "${out}")" "shared file listed once"
+assert_contains "$(cat src/deps.typ)" "@preview/cetz-plot:0.1.3" "second package in the shared file"

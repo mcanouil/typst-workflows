@@ -1,0 +1,55 @@
+name: Bump the Typst pins
+description: Move the Typst compiler of typst.toml and the listed @preview imports to their latest GitHub releases.
+
+inputs:
+  packages:
+    description: "YAML list of {name, repository, file}: the @preview/<name> import in <file>, followed through the latest release of <repository>. Empty follows the compiler alone."
+    required: false
+    default: ""
+  manifest:
+    description: "Path to the typst.toml manifest."
+    required: false
+    default: "typst.toml"
+  token:
+    description: "Token for the GitHub API."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  any:
+    description: "true when a pin moved, else false."
+    value: ${{ steps.bump.outputs.any }}
+  subject:
+    description: "Commit message and pull request title, such as 'ci: bump typst to 0.15.1, cetz to 0.5.3'."
+    value: ${{ steps.bump.outputs.subject }}
+  body:
+    description: "Pull request body, one line and release link per bump."
+    value: ${{ steps.bump.outputs.body }}
+  files:
+    description: "Files that changed, one per line."
+    value: ${{ steps.bump.outputs.files }}
+
+runs:
+  using: composite
+  steps:
+    - name: Bump the pins
+      id: bump
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PACKAGES: ${{ inputs.packages }}
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        set -euo pipefail
+        latest() {
+          gh api "repos/$1/releases/latest" --jq .tag_name ||
+            { echo "::error::could not read the latest release of $1. Check the repository name and that it publishes releases."; exit 1; }
+        }
+        {
+          printf 'typst\t%s\ttypst/typst\t%s\n' "${MANIFEST}" "$(latest typst/typst)"
+          if [[ -n "${PACKAGES//[[:space:]]/}" ]]; then
+            while IFS=$'\t' read -r name repository file; do
+              printf '%s\t%s\t%s\t%s\n' "${name}" "${file}" "${repository}" "$(latest "${repository}")"
+            done < <(yq -r '.[] | [.name, .repository, .file] | @tsv' <<<"${PACKAGES}")
+          fi
+        } | "${GITHUB_ACTION_PATH}/bump-pins.sh" "${MANIFEST}" >>"${GITHUB_OUTPUT}"

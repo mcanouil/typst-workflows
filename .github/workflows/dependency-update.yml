@@ -19,6 +19,11 @@ on:
 permissions:
   contents: read
 
+# A dispatch that overlaps the schedule would land the same bump twice.
+concurrency:
+  group: dependency-update-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   bump:
     name: Bump the Typst pins

@@ -73,3 +73,9 @@ err="$(printf 'typst\ttypst.toml\ttypst/typst\tnightly\n' | "${script}" typst.to
 assert_status 1 "${status}" "tag not a version"
 assert_contains "${err}" "nightly" "tag not a version names the tag"
 assert_contains "$(cat typst.toml)" 'compiler = "0.15.0"' "tag not a version leaves the manifest"
+
+# No manifest.
+status=0
+err="$(printf 'typst\tmissing.toml\ttypst/typst\tv0.15.1\n' | "${script}" missing.toml 2>&1 >/dev/null)" || status=$?
+assert_status 1 "${status}" "missing manifest"
+assert_contains "${err}" "manifest not found: missing.toml" "missing manifest message"

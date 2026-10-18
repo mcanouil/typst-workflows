@@ -13,6 +13,11 @@ set -euo pipefail
 
 manifest="${1:?usage: bump-pins.sh <typst.toml>}"
 
+if [[ ! -f "${manifest}" ]]; then
+  printf 'manifest not found: %s. Set the manifest input to the path of typst.toml.\n' "${manifest}" >&2
+  exit 1
+fi
+
 version_re='[0-9][0-9A-Za-z.+-]*'
 subject_parts=()
 body_lines=()

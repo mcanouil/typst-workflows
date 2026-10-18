@@ -65,3 +65,11 @@ err="$(printf 'typst\ttypst.toml\ttypst/typst\tv0.15.0\ncetz\tsrc/deps.typ\tcetz
 assert_status 1 "${status}" "missing pin"
 assert_contains "${err}" "@preview/cetz" "missing pin names the package"
 assert_contains "${err}" "src/deps.typ" "missing pin names the file"
+
+# A tag that is not a version.
+reset
+status=0
+err="$(printf 'typst\ttypst.toml\ttypst/typst\tnightly\n' | "${script}" typst.toml 2>&1 >/dev/null)" || status=$?
+assert_status 1 "${status}" "tag not a version"
+assert_contains "${err}" "nightly" "tag not a version names the tag"
+assert_contains "$(cat typst.toml)" 'compiler = "0.15.0"' "tag not a version leaves the manifest"

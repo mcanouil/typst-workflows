@@ -41,15 +41,5 @@ runs:
         MANIFEST: ${{ inputs.manifest }}
       run: |
         set -euo pipefail
-        latest() {
-          gh api "repos/$1/releases/latest" --jq .tag_name ||
-            { echo "::error::could not read the latest release of $1. Check the repository name and that it publishes releases."; exit 1; }
-        }
-        {
-          printf 'typst\t%s\ttypst/typst\t%s\n' "${MANIFEST}" "$(latest typst/typst)"
-          if [[ -n "${PACKAGES//[[:space:]]/}" ]]; then
-            while IFS=$'\t' read -r name repository file; do
-              printf '%s\t%s\t%s\t%s\n' "${name}" "${file}" "${repository}" "$(latest "${repository}")"
-            done < <(yq -r '.[] | [.name, .repository, .file] | @tsv' <<<"${PACKAGES}")
-          fi
-        } | "${GITHUB_ACTION_PATH}/bump-pins.sh" "${MANIFEST}" >>"${GITHUB_OUTPUT}"
+        tags="$("${GITHUB_ACTION_PATH}/latest-tags.sh" "${MANIFEST}")"
+        "${GITHUB_ACTION_PATH}/bump-pins.sh" "${MANIFEST}" <<<"${tags}" >>"${GITHUB_OUTPUT}"

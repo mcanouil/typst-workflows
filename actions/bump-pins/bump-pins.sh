@@ -21,6 +21,10 @@ changed=()
 while IFS=$'\t' read -r name file repository tag; do
   [[ -n "${name}" ]] || continue
   latest="${tag#v}"
+  if [[ ! "${latest}" =~ ^[0-9][0-9A-Za-z.+-]*$ ]]; then
+    printf 'the latest release of %s has the tag %s, which is not a version. Pin %s by hand.\n' "${repository}" "${tag}" "${name}" >&2
+    exit 1
+  fi
   if [[ "${name}" == "typst" ]]; then
     current="$(awk -F'"' '/^compiler[[:space:]]*=/ { print $2; exit }' "${manifest}")"
     if [[ -z "${current}" ]]; then

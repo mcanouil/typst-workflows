@@ -94,6 +94,10 @@ jobs:
           COMMAND: ${{ inputs.command }}
         run: |
           set -euo pipefail
+          if [[ -z "${GOLDENS}" || "${GOLDENS}" == /* || "/${GOLDENS}/" == */../* ]]; then
+            echo "::error::goldens is '${GOLDENS}'. Give a directory inside the repository, such as tests/visual/golden."
+            exit 1
+          fi
           if [[ "${FORCE}" == "true" ]]; then
             rm -rf -- "${GOLDENS}"
           fi

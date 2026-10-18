@@ -308,8 +308,9 @@ jobs:
 ## Dependency update
 
 `.github/workflows/dependency-update.yml` follows the latest GitHub release of Typst and of each package in `packages`.
-When a version moves, it writes the `compiler` key of `typst.toml` and the `@preview/<name>:<version>` imports of the named file.
+When a release is newer than the pin, it writes the `compiler` key of `typst.toml` and the `@preview/<name>:<version>` imports of the named file.
 Then `land` opens or updates one pull request on `ci/bump-typst-deps`, which it does not merge.
+A pin that is newer than the latest release stays as it is.
 A run that finds nothing to move ends green.
 The caller sets the schedule.
 

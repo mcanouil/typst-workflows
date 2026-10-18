@@ -1,0 +1,69 @@
+name: Dependency update
+
+# Moves the Typst compiler of typst.toml and the listed @preview imports to
+# their latest GitHub releases, and opens or updates one pull request with the
+# bump. A run that finds nothing to move ends green. The caller sets the
+# schedule.
+on:
+  workflow_call:
+    inputs:
+      packages:
+        description: "YAML list of {name, repository, file}: the @preview/<name> import in <file>, followed through the latest release of <repository>. Empty follows the compiler alone."
+        type: string
+        required: false
+        default: ""
+    secrets:
+      APP_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+# A dispatch that overlaps the schedule would land the same bump twice.
+concurrency:
+  group: dependency-update-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump the Typst pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      # A pull request opened with the default token starts no workflow, so
+      # its checks would never run.
+      - name: Get the App token
+        id: token
+        uses: mcanouil/release-actions/token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+          require-app: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.token.outputs.token }}
+
+      - name: Bump the pins
+        id: pins
+        uses: mcanouil/typst-workflows/actions/bump-pins@v2
+        with:
+          packages: ${{ inputs.packages }}
+          token: ${{ steps.token.outputs.token }}
+
+      - name: Open the pull request
+        if: ${{ steps.pins.outputs.any == 'true' }}
+        uses: mcanouil/release-actions/land@v1
+        with:
+          mode: pull-request
+          merge: none
+          files: ${{ steps.pins.outputs.files }}
+          message: ${{ steps.pins.outputs.subject }}
+          body: ${{ steps.pins.outputs.body }}
+          branch: ci/bump-typst-deps
+          token: ${{ steps.token.outputs.token }}

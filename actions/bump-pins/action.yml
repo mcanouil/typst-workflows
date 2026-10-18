@@ -1,0 +1,53 @@
+name: Bump the Typst pins
+description: Move the Typst compiler of typst.toml and the listed @preview imports to their latest GitHub releases.
+
+inputs:
+  packages:
+    description: "YAML list of {name, repository, file}: the @preview/<name> import in <file>, followed through the latest release of <repository>. Empty follows the compiler alone."
+    required: false
+    default: ""
+  manifest:
+    description: "Path to the typst.toml manifest."
+    required: false
+    default: "typst.toml"
+  token:
+    description: "Token for the GitHub API."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  any:
+    description: "true when a pin moved, else false."
+    value: ${{ steps.bump.outputs.any }}
+  subject:
+    description: "Commit message and pull request title, such as 'ci: bump typst to 0.15.1, cetz to 0.5.3'."
+    value: ${{ steps.bump.outputs.subject }}
+  body:
+    description: "Pull request body, one line and release link per bump."
+    value: ${{ steps.bump.outputs.body }}
+  files:
+    description: "Files that changed, one per line."
+    value: ${{ steps.bump.outputs.files }}
+
+runs:
+  using: composite
+  steps:
+    - name: Bump the pins
+      id: bump
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PACKAGES: ${{ inputs.packages }}
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        set -euo pipefail
+        # The scripts write their errors to stderr; repeat them as annotations.
+        errors="${RUNNER_TEMP}/bump-pins.err"
+        annotate() {
+          while IFS= read -r line; do
+            echo "::error::${line}"
+          done <"${errors}"
+          exit 1
+        }
+        tags="$("${GITHUB_ACTION_PATH}/latest-tags.sh" "${MANIFEST}" 2>"${errors}")" || annotate
+        "${GITHUB_ACTION_PATH}/bump-pins.sh" "${MANIFEST}" <<<"${tags}" 2>"${errors}" >>"${GITHUB_OUTPUT}" || annotate

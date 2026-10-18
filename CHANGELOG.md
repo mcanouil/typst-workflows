@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- feat: Add the snapshot-refresh reusable workflow, which regenerates the visual goldens and lands them. (#14)
+- feat: Add the dependency-update reusable workflow, which follows Typst and the listed packages and opens one pull request. (#14)
+
 ## 2.2.0 (2026-10-17)
 
 - refactor: Rely on release-actions v1.3.0 for the App check and `after-bump`, and drop the steps that did this in the workflows. (#13)

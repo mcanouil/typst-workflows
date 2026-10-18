@@ -261,6 +261,88 @@ jobs:
 
 The new tag renders at the site root, and the default branch renders at `/dev/`.
 
+## Snapshot refresh
+
+`.github/workflows/snapshot-refresh.yml` regenerates the visual goldens and lands them.
+It installs Typst from `typst.toml`, Lua 5.4 and ImageMagick, then runs `command`.
+`land` then opens or updates a pull request on `ci/snapshot-refresh`, or pushes to the dispatched branch when `direct` is true.
+A run that changes no golden ends green.
+The job needs the App, because a direct push must bypass the branch rules.
+
+| Input | Type | Default | Description |
+| --- | --- | --- | --- |
+| `direct` | boolean | `false` | Pushes the goldens to the dispatched branch instead of opening a pull request. |
+| `force` | boolean | `false` | Deletes every golden first, so all snapshots re-mint and orphaned files go. |
+| `merge-method` | string | `squash` | Merge method of the pull request: `squash` or `merge`. |
+| `goldens` | string | `tests/visual/golden` | Directory of the goldens. |
+| `command` | string | `lua tools/snapshot/run.lua --update` | Command that regenerates the goldens. |
+
+```yaml
+name: Refresh visual snapshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      direct:
+        type: boolean
+        default: false
+      force:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    uses: mcanouil/typst-workflows/.github/workflows/snapshot-refresh.yml@v2
+    secrets: inherit
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      direct: ${{ inputs.direct }}
+      force: ${{ inputs.force }}
+```
+
+## Dependency update
+
+`.github/workflows/dependency-update.yml` follows the latest GitHub release of Typst and of each package in `packages`.
+When a release is newer than the pin, it writes the `compiler` key of `typst.toml` and the `@preview/<name>:<version>` imports of the named file.
+Then `land` opens or updates one pull request on `ci/bump-typst-deps`, which it does not merge.
+A pin that is newer than the latest release stays as it is.
+A run that finds nothing to move ends green.
+The caller sets the schedule.
+
+| Input | Type | Default | Description |
+| --- | --- | --- | --- |
+| `packages` | string | `""` | YAML list of `name`, `repository` and `file`. Empty follows the compiler alone. |
+
+```yaml
+name: Dependency update
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    uses: mcanouil/typst-workflows/.github/workflows/dependency-update.yml@v2
+    secrets: inherit
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      packages: |
+        - name: cetz
+          repository: cetz-package/cetz
+          file: src/deps.typ
+```
+
 ## Release runbook
 
 Before the first release, set up these once in each package repository:
@@ -303,6 +385,7 @@ The workflows are built from these composite actions, which you can also use on 
 - `actions/fill-package-cache` compiles a package and its template entrypoint, so that `typst-package-check` finds their dependencies in the Typst cache.
 - `actions/universe-served` asks `packages.typst.org` whether it serves a package version.
 - `actions/universe-submit` checks the pull request token, then syncs the fork, pushes the package and opens or reuses the pull request on `typst/packages`.
+- `actions/bump-pins` moves the `compiler` key of `typst.toml` and the listed `@preview` imports to their latest GitHub releases.
 
 ## Versioning
 

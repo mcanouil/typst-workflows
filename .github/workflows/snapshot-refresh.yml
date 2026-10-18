@@ -1,0 +1,116 @@
+name: Snapshot refresh
+
+# Regenerates the visual goldens with the caller's own command and lands them,
+# through a pull request or, with direct, by a push to the dispatched branch.
+# A run that changes nothing ends green.
+on:
+  workflow_call:
+    inputs:
+      direct:
+        description: "Push the goldens to the dispatched branch instead of opening a pull request. The App must bypass the branch rules."
+        type: boolean
+        required: false
+        default: false
+      force:
+        description: "Delete every golden first, so all snapshots re-mint and orphaned files go."
+        type: boolean
+        required: false
+        default: false
+      merge-method:
+        description: "squash or merge, for the pull request."
+        type: string
+        required: false
+        default: "squash"
+      goldens:
+        description: "Directory of the goldens, deleted on force and landed."
+        type: string
+        required: false
+        default: "tests/visual/golden"
+      command:
+        description: "Command that regenerates the goldens."
+        type: string
+        required: false
+        default: "lua tools/snapshot/run.lua --update"
+    secrets:
+      APP_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snapshot-refresh-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Regenerate and land the goldens
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      # The checkout keeps the App token, so a direct push acts as the App and
+      # its bypass of the branch rules applies.
+      - name: Get the App token
+        id: token
+        uses: mcanouil/release-actions/token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+          require-app: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.token.outputs.token }}
+
+      - name: Set up Typst
+        uses: mcanouil/typst-workflows/actions/setup-typst@v2
+
+      - name: Set up Lua
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4"
+
+      - name: Set up ImageMagick
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v compare >/dev/null; then
+            compare -version | head -1
+            exit 0
+          fi
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends imagemagick
+
+      - name: Regenerate the goldens
+        shell: bash
+        env:
+          FORCE: ${{ inputs.force }}
+          GOLDENS: ${{ inputs.goldens }}
+          COMMAND: ${{ inputs.command }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GOLDENS}" || "${GOLDENS}" == /* || "/${GOLDENS}/" == */../* ]]; then
+            echo "::error::goldens is '${GOLDENS}'. Give a directory inside the repository, such as tests/visual/golden."
+            exit 1
+          fi
+          if [[ "${FORCE}" == "true" ]]; then
+            rm -rf -- "${GOLDENS}"
+          fi
+          bash -euo pipefail -c "${COMMAND}"
+
+      - name: Land the goldens
+        uses: mcanouil/release-actions/land@v1
+        with:
+          mode: ${{ inputs.direct && 'push' || 'pull-request' }}
+          files: ${{ inputs.goldens }}
+          message: "chore(tests): refresh visual snapshots"
+          branch: ci/snapshot-refresh
+          merge-method: ${{ inputs.merge-method }}
+          wait: false
+          allow-unchanged: true
+          token: ${{ steps.token.outputs.token }}

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- refactor: Write typst.toml and CITATION.cff through the release-actions presets; callers list only their extra files. (#16)
+
 ## 2.3.1 (2026-10-19)
 
 - refactor: Move the update of an existing draft into the update-draft action, with tests. (#15)

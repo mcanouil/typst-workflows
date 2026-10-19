@@ -138,7 +138,7 @@ It runs four jobs:
 
 - `plan` works out the version and tries the bump, so an empty `## Unreleased` fails in seconds. It also refuses a version that already has a release.
 - `checks` runs `checks.yml` on the dispatched commit.
-- `release` bumps the version with [release-actions](https://github.com/mcanouil/release-actions) `bump`, in `typst.toml` and in each file of `targets`, runs `after-bump`, and builds the archives at that commit. Only then does it push the commit `ci: release X [skip ci]` straight to the default branch with the GitHub App, through the release-actions `land` action, and keep the archives in a draft GitHub Release, with the changelog section as its notes.
+- `release` bumps the version with [release-actions](https://github.com/mcanouil/release-actions) `bump`, through the `typst` and `citation` presets, which write `version` in `typst.toml` and `version` and `date-released` in `CITATION.cff`, and in each file of `targets`, runs `after-bump`, and builds the archives at that commit. Only then does it push the commit `ci: release X [skip ci]` straight to the default branch with the GitHub App, through the release-actions `land` action, and keep the archives in a draft GitHub Release, with the changelog section as its notes.
 - `universe` runs on the `typst-universe` environment, so it waits for your approval. It compiles the package of the draft and its template entrypoint, which fills the Typst package cache, then lints the archive, syncs the fork of `typst/packages`, pushes the package on the branch `<name>-<version>`, and opens the pull request `<name>:<version>`, or reuses the open one. The body lists the changelog section as the changes.
 
 ```mermaid
@@ -174,7 +174,7 @@ A dry run can start from any branch, while a real release refuses anything but t
 | --- | --- | --- | --- |
 | `bump` | string | | `patch`, `minor`, `major`, or `none` to resubmit the draft. |
 | `dry-run` | boolean | `false` | Rehearses the whole run with no push, no draft and no pull request. |
-| `targets` | string | `""` | YAML list of [release-actions `bump` targets](https://github.com/mcanouil/release-actions#bump) for the files other than `typst.toml`, which the workflow adds itself. Each item starts at column 0. |
+| `targets` | string | `""` | YAML list of [release-actions `bump` targets](https://github.com/mcanouil/release-actions#bump) for the files other than `typst.toml` and `CITATION.cff`, which the `typst` and `citation` presets write. A target that repeats a preset target fails the bump. |
 | `after-bump` | string | `""` | A command run after the bump and before the commit, such as `tools/version-check.sh`. The plan job also runs it on its trial bump, so a broken command fails before the checks. A failure stops the run before anything is pushed. The bump commit includes the files it changes or creates, except files that `.gitignore` matches. |
 | `needs-lua`, `needs-quarto`, `needs-imagemagick`, `check-args`, `failure-artifacts`, `shellcheck-paths`, `shfmt-paths` | | as in `checks.yml` | Passed on to the checks. |
 | `universe-fork` | string | `typst-universe-packages` | The fork of `typst/packages`, under the same owner. |
@@ -211,16 +211,12 @@ jobs:
       dry-run: ${{ inputs.dry-run }}
       after-bump: tools/version-check.sh
       targets: |
-        - file: CITATION.cff
-          pattern: '^version: {version}$'
-        - file: CITATION.cff
-          pattern: '^date-released: "{date}"$'
         - file: README.md
           pattern: '@preview/gribouille:{version}'
 ```
 
 Each target must match at least once, or the bump fails before it writes anything.
-A `CITATION.cff` with no `date-released` line yet needs that line before the first release, or `required: false` on its target.
+The `citation` preset needs `version` and `date-released` lines in `CITATION.cff` before the first release.
 
 ## Publish
 

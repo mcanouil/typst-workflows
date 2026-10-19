@@ -382,6 +382,7 @@ The workflows are built from these composite actions, which you can also use on 
 - `actions/setup-package-check` installs `typst-package-check`, cached by the upstream revision.
 - `actions/docs-matrix` builds the docs render matrix and the `versions.json` list from the latest tag and `site-url`.
 - `actions/find-release` finds the release of a version, draft or published, and the id of one of its assets.
+- `actions/update-draft` moves an existing draft release to a commit, replaces its notes and replaces its two archives.
 - `actions/fill-package-cache` compiles a package and its template entrypoint, so that `typst-package-check` finds their dependencies in the Typst cache.
 - `actions/universe-served` asks `packages.typst.org` whether it serves a package version.
 - `actions/universe-submit` checks the pull request token, then syncs the fork, pushes the package and opens or reuses the pull request on `typst/packages`.

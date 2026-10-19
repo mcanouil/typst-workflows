@@ -1,0 +1,38 @@
+name: Update a draft release
+description: Move an existing draft release to a commit, replace its notes and replace its two archives.
+
+inputs:
+  version:
+    description: "The release tag, such as 0.8.0."
+    required: true
+  name:
+    description: "The package name, which starts the archive names."
+    required: true
+  target:
+    description: "The commit the draft should target."
+    required: true
+  notes-file:
+    description: "The file that holds the release notes."
+    required: true
+  assets-dir:
+    description: "The directory that holds NAME-VERSION.tar.gz and NAME-VERSION.zip."
+    required: true
+  token:
+    description: "A token that can edit releases. Drafts are hidden from any other token."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Update the draft
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        VERSION: ${{ inputs.version }}
+        NAME: ${{ inputs.name }}
+        SHA: ${{ inputs.target }}
+        NOTES: ${{ inputs.notes-file }}
+        ASSETS_DIR: ${{ inputs.assets-dir }}
+      run: |
+        set -euo pipefail
+        "${GITHUB_ACTION_PATH}/update-draft.sh"

@@ -51,14 +51,10 @@ on:
 permissions:
   contents: read
 
-# The bump targets of both jobs. The caller's list follows the typst.toml target
-# as it is, so each of its items must start at column 0.
+# The caller's extra bump targets, for both jobs. The typst and citation presets
+# write typst.toml and CITATION.cff, so the list holds only the other files.
 env:
-  BUMP_TARGETS: |
-    - file: typst.toml
-      pattern: '^version = "{version}"$'
-      source: true
-    ${{ inputs.targets }}
+  BUMP_TARGETS: ${{ inputs.targets }}
 
 jobs:
   plan:
@@ -116,6 +112,7 @@ jobs:
         uses: mcanouil/release-actions/bump@v1
         with:
           bump: ${{ inputs.bump }}
+          ecosystems: typst, citation
           targets: ${{ env.BUMP_TARGETS }}
           after-bump: ${{ inputs.after-bump }}
 
@@ -284,6 +281,7 @@ jobs:
         with:
           bump: ${{ inputs.bump }}
           date: ${{ needs.plan.outputs.date }}
+          ecosystems: typst, citation
           targets: ${{ env.BUMP_TARGETS }}
           after-bump: ${{ inputs.after-bump }}
 

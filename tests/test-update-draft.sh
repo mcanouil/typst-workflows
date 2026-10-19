@@ -45,6 +45,18 @@ fi
 assert_contains "$(cat "${SCRATCH}/err")" "0.2.0" "failing edit names the version"
 assert_eq 1 "$(wc -l <"${GH_LOG}" | tr -d ' ')" "no upload after a failed edit"
 
+# A failing upload stops the script and names the version.
+set +e
+STUB_FAIL=upload run_script
+status=$?
+set -e
+if [[ ${status} -eq 0 ]]; then
+  echo "  failing upload: expected a non-zero exit" >&2
+  exit 1
+fi
+assert_contains "$(cat "${SCRATCH}/err")" "could not upload the archives to the draft 0.2.0" "failing upload names the version"
+assert_eq 2 "$(wc -l <"${GH_LOG}" | tr -d ' ')" "upload tried after the edit"
+
 # A missing archive fails before gh is called.
 rm "${SCRATCH}/assets/demo-0.2.0.zip"
 set +e

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 2.3.1 (2026-10-19)
+
 - refactor: Move the update of an existing draft into the update-draft action, with tests. (#15)
 
 ## 2.3.0 (2026-10-18)

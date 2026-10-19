@@ -33,6 +33,4 @@ runs:
         SHA: ${{ inputs.target }}
         NOTES: ${{ inputs.notes-file }}
         ASSETS_DIR: ${{ inputs.assets-dir }}
-      run: |
-        set -euo pipefail
-        "${GITHUB_ACTION_PATH}/update-draft.sh"
+      run: '"${GITHUB_ACTION_PATH}/update-draft.sh"'

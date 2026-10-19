@@ -11,6 +11,8 @@ on:
       bump:
         type: string
         required: true
+      # Extra bump targets. The typst and citation presets write typst.toml and
+      # CITATION.cff, so the list holds only the other files.
       targets:
         type: string
         default: ""
@@ -50,11 +52,6 @@ on:
 
 permissions:
   contents: read
-
-# The caller's extra bump targets, for both jobs. The typst and citation presets
-# write typst.toml and CITATION.cff, so the list holds only the other files.
-env:
-  BUMP_TARGETS: ${{ inputs.targets }}
 
 jobs:
   plan:
@@ -113,7 +110,7 @@ jobs:
         with:
           bump: ${{ inputs.bump }}
           ecosystems: typst, citation
-          targets: ${{ env.BUMP_TARGETS }}
+          targets: ${{ inputs.targets }}
           after-bump: ${{ inputs.after-bump }}
 
       - name: Undo the bump
@@ -282,7 +279,7 @@ jobs:
           bump: ${{ inputs.bump }}
           date: ${{ needs.plan.outputs.date }}
           ecosystems: typst, citation
-          targets: ${{ env.BUMP_TARGETS }}
+          targets: ${{ inputs.targets }}
           after-bump: ${{ inputs.after-bump }}
 
       - name: Check the version

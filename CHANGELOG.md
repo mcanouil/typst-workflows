@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- refactor: Move the update of an existing draft into the update-draft action, with tests. (#15)
+
 ## 2.3.0 (2026-10-18)
 
 - feat: Add the snapshot-refresh reusable workflow, which regenerates the visual goldens and lands them. (#14)

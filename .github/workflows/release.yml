@@ -365,17 +365,14 @@ jobs:
       # and replaces its assets here.
       - name: Update the draft
         if: ${{ !inputs.dry-run && needs.plan.outputs.state == 'draft' }}
-        shell: bash
-        env:
-          GH_TOKEN: ${{ steps.token.outputs.token }}
-          SHA: ${{ steps.land.outputs.sha || github.sha }}
-          NOTES: ${{ steps.notes.outputs.body-file }}
-        run: |
-          set -euo pipefail
-          gh release edit "${VERSION}" --target "${SHA}" --notes-file "${NOTES}"
-          gh release upload "${VERSION}" --clobber \
-            "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.tar.gz#${NAME} ${VERSION} (tar.gz)" \
-            "${RUNNER_TEMP}/assets/${NAME}-${VERSION}.zip#${NAME} ${VERSION} (zip)"
+        uses: mcanouil/typst-workflows/actions/update-draft@v2
+        with:
+          version: ${{ needs.plan.outputs.version }}
+          name: ${{ needs.plan.outputs.name }}
+          target: ${{ steps.land.outputs.sha || github.sha }}
+          notes-file: ${{ steps.notes.outputs.body-file }}
+          assets-dir: ${{ runner.temp }}/assets
+          token: ${{ steps.token.outputs.token }}
 
       - name: Summary
         shell: bash

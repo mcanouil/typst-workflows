@@ -13,6 +13,7 @@ A package that calls these workflows provides the files below.
 | File | What the workflows expect |
 | --- | --- |
 | `typst.toml` | A `compiler` key, which sets the Typst version that CI installs. The release reads `name`, `repository` and `homepage`, and bumps `version`, which is the source of the current version. |
+| `CITATION.cff` | A `version` line and a `date-released` line, which the release writes through the `citation` preset. |
 | `tools/check.sh` | The full local suite. It exits 0 when every check passes and 1 otherwise. It accepts extra arguments. |
 | `tools/dry-release.sh` | Stages the package, installs it as `@preview/<name>:<version>`, compiles against that copy, and lints the payload with `typst-package-check`. It honours `XDG_DATA_HOME` and `STAGE_ROOT`. |
 | `tools/package.sh` | `archive <out>` writes `<name>-<version>.tar.gz` and `<name>-<version>.zip`, each with a single `<name>-<version>/` root. |

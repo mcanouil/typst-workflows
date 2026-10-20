@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 2.4.1 (2026-10-20)
+
 - refactor: Call the update-draft script directly, and pass the targets input straight to both bump steps. (#17)
 
 ## 2.4.0 (2026-10-19)

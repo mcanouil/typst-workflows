@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- feat: Add the `main-as-latest` input to the docs workflow. It renders the site root from the default branch under the latest tag's version, so a docs-only change needs no release. (#21)
+
 ## 2.5.2 (2026-10-21)
 
 - fix: The `days` input of the lock-closed workflow is a string, so a caller can pass a dispatched number input to it. (#20)

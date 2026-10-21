@@ -2,7 +2,9 @@ name: Docs
 
 # Renders the latest version tag at the site root and the triggering ref at
 # /dev/, or the triggering ref alone at the root before the first tag. A pull
-# request builds every site and deploys nothing.
+# request builds every site and deploys nothing. With `main-as-latest`, the root
+# renders the default branch instead of the tag, still labelled with the tag's
+# version, so a change to the docs alone is published without a release.
 on:
   workflow_call:
     inputs:
@@ -16,6 +18,9 @@ on:
         type: string
         default: ""
       dev-archive:
+        type: boolean
+        default: false
+      main-as-latest:
         type: boolean
         default: false
 
@@ -38,6 +43,20 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       versions: ${{ steps.matrix.outputs.versions }}
     steps:
+      # The root is what readers of the release see, so it renders only what has
+      # landed on the default branch. A pull request deploys nothing, so it is
+      # left to build.
+      - name: Refuse main-as-latest off the default branch
+        if: ${{ inputs.main-as-latest && github.event_name != 'pull_request' && (inputs.ref != '' || github.ref_name != github.event.repository.default_branch) }}
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          echo "::error::main-as-latest renders ${DEFAULT_BRANCH} with an empty ref, not ${REF_NAME}${INPUT_REF:+ with ref ${INPUT_REF}}. Dispatch it from ${DEFAULT_BRANCH}."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
@@ -47,6 +66,8 @@ jobs:
       - name: Build the matrix
         id: matrix
         uses: mcanouil/typst-workflows/actions/docs-matrix@v2
+        with:
+          main-as-latest: ${{ inputs.main-as-latest }}
 
   build:
     name: Render ${{ matrix.profile }} site
@@ -213,12 +234,19 @@ jobs:
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          MAIN_AS_LATEST: ${{ inputs.main-as-latest }}
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           {
             echo "## Documentation deploy"
             echo ""
             if [[ -n "${TAG}" ]]; then
-              echo "- Root: \`${TAG}\` at ${PAGE_URL}"
+              source_note=""
+              if [[ "${MAIN_AS_LATEST}" == "true" ]]; then
+                source_note=", built from ${DEFAULT_BRANCH} at \`${SHA}\`,"
+              fi
+              echo "- Root: \`${TAG}\`${source_note} at ${PAGE_URL}"
               echo "- Development: ${PAGE_URL}dev/"
             else
               echo "- Root: development version, no tag yet, at ${PAGE_URL}"

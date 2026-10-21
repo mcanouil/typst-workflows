@@ -349,7 +349,7 @@ The caller sets the schedule.
 
 | Input | Type | Default | Description |
 | --- | --- | --- | --- |
-| `days` | number | `7` | Days with no activity before a closed thread is locked. |
+| `days` | string | `"7"` | Days with no activity before a closed thread is locked. |
 
 ```yaml
 name: Lock closed

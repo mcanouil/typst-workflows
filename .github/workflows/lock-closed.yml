@@ -6,11 +6,14 @@ name: Lock closed
 on:
   workflow_call:
     inputs:
+      # A string, because a number input of workflow_dispatch reaches a called
+      # workflow as a string, and GitHub then refuses the call at startup with
+      # no message. A number from a schedule or a literal still passes.
       days:
         description: "Lock closed threads with no activity for more than this many days."
-        type: number
+        type: string
         required: false
-        default: 7
+        default: "7"
 
 # The job reads nothing from the repository. A caller grants issues and pull
 # requests alone, and a called workflow cannot ask for more than its caller.

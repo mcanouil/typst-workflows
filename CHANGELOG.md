@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- feat: Add the lock-closed reusable workflow, which locks closed issues and pull requests after a number of days with no activity. (#18)
+
 ## 2.4.1 (2026-10-20)
 
 - refactor: Call the update-draft script directly, and pass the targets input straight to both bump steps. (#17)

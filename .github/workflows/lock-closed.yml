@@ -1,0 +1,38 @@
+name: Lock closed
+
+# Locks closed issues and pull requests that had no activity for `days` days,
+# so a late comment lands in a new thread. lock-threads searches only unlocked
+# threads, so a run does not lock a thread twice. The caller sets the schedule.
+on:
+  workflow_call:
+    inputs:
+      days:
+        description: "Lock closed threads with no activity for more than this many days."
+        type: number
+        required: false
+        default: 7
+
+permissions:
+  contents: read
+
+# A dispatch that overlaps the schedule would lock the same threads twice.
+concurrency:
+  group: lock-closed-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  lock:
+    name: Lock stale closed threads
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Lock stale threads
+        uses: dessant/lock-threads@v6
+        with:
+          issue-inactive-days: ${{ inputs.days }}
+          pr-inactive-days: ${{ inputs.days }}
+          process-only: issues, prs

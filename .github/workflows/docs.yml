@@ -2,7 +2,9 @@ name: Docs
 
 # Renders the latest version tag at the site root and the triggering ref at
 # /dev/, or the triggering ref alone at the root before the first tag. A pull
-# request builds every site and deploys nothing.
+# request builds every site and deploys nothing. With `main-as-latest`, the root
+# renders the default branch instead of the tag, still labelled with the tag's
+# version, so a change to the docs alone is published without a release.
 on:
   workflow_call:
     inputs:
@@ -16,6 +18,9 @@ on:
         type: string
         default: ""
       dev-archive:
+        type: boolean
+        default: false
+      main-as-latest:
         type: boolean
         default: false
 
@@ -38,6 +43,26 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       versions: ${{ steps.matrix.outputs.versions }}
     steps:
+      # The root is what readers of the release see, so it renders only what has
+      # landed on the default branch.
+      - name: Check the main-as-latest run
+        if: ${{ inputs.main-as-latest }}
+        shell: bash
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          RUN_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${INPUT_REF}" ]]; then
+            echo "::error::main-as-latest renders the default branch; got ref ${INPUT_REF}. Leave ref empty."
+            exit 1
+          fi
+          if [[ "${RUN_REF}" != "refs/heads/${DEFAULT_BRANCH}" ]]; then
+            echo "::error::main-as-latest runs on the default branch, ${DEFAULT_BRANCH}; got ${RUN_REF}. Run the workflow from ${DEFAULT_BRANCH}."
+            exit 1
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
@@ -47,6 +72,8 @@ jobs:
       - name: Build the matrix
         id: matrix
         uses: mcanouil/typst-workflows/actions/docs-matrix@v2
+        with:
+          main-as-latest: ${{ inputs.main-as-latest }}
 
   build:
     name: Render ${{ matrix.profile }} site
@@ -213,11 +240,17 @@ jobs:
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          MAIN_AS_LATEST: ${{ inputs.main-as-latest }}
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           {
             echo "## Documentation deploy"
             echo ""
-            if [[ -n "${TAG}" ]]; then
+            if [[ -n "${TAG}" && "${MAIN_AS_LATEST}" == "true" ]]; then
+              echo "- Root: \`${TAG}\`, built from ${DEFAULT_BRANCH} at \`${SHA}\`, at ${PAGE_URL}"
+              echo "- Development: ${PAGE_URL}dev/"
+            elif [[ -n "${TAG}" ]]; then
               echo "- Root: \`${TAG}\` at ${PAGE_URL}"
               echo "- Development: ${PAGE_URL}dev/"
             else

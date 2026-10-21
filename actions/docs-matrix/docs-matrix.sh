@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # Prints the docs render matrix and the versions.json payload, as GITHUB_OUTPUT
 # lines, from the site URL in a Quarto configuration and the latest version tag.
+# With main-as-latest set to true, the release site renders the calling ref
+# rather than the tag, still labelled with the tag's version, so a change to
+# the docs alone reaches the site root without a release.
 set -euo pipefail
 
-usage='usage: docs-matrix.sh <quarto-yml> [latest-tag]'
+usage='usage: docs-matrix.sh <quarto-yml> [latest-tag] [main-as-latest]'
 quarto_yml="${1:?${usage}}"
 tag="${2:-}"
+main_as_latest="${3:-false}"
+
+if [[ "${main_as_latest}" != "true" && "${main_as_latest}" != "false" ]]; then
+  printf 'main-as-latest must be true or false; got %s\n' "${main_as_latest}" >&2
+  exit 1
+fi
 
 # The `site-url:` under the top-level `website:` key, without a YAML anchor
 # (`&name`), an inline comment, or quotes. Other keys may hold a `site-url` too,
@@ -34,8 +43,10 @@ fi
 site_url="${site_url%/}"
 
 if [[ -n "${tag}" ]]; then
-  matrix="$(jq -nc --arg tag "${tag}" '{include: [
-    {profile: "release", ref: $tag, version: $tag, assets_dir: ""},
+  release_ref="${tag}"
+  [[ "${main_as_latest}" == "true" ]] && release_ref=""
+  matrix="$(jq -nc --arg tag "${tag}" --arg ref "${release_ref}" '{include: [
+    {profile: "release", ref: $ref, version: $tag, assets_dir: ""},
     {profile: "dev", ref: "", version: "dev", assets_dir: "docs/_site/dev"}
   ]}')"
   versions="$(jq -nc --arg tag "${tag}" --arg site "${site_url}" '[

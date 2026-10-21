@@ -17,6 +17,20 @@ assert_eq '["","docs/_site/dev"]' "$(value matrix "${out}" | jq -c '[.include[].
 assert_eq '["https://m.canouil.dev/pkg/","https://m.canouil.dev/pkg/dev/"]' "$(value versions "${out}" | jq -c '[.[].url]')" "tagged urls"
 assert_eq 'true' "$(value versions "${out}" | jq -c '.[0].latest')" "latest flag"
 
+out="$("${script}" "${SCRATCH}/plain.yml" "1.2.0" "true")"
+assert_eq '["release","dev"]' "$(value matrix "${out}" | jq -c '[.include[].profile]')" "main-as-latest profiles"
+assert_eq '["",""]' "$(value matrix "${out}" | jq -c '[.include[].ref]')" "main-as-latest renders the calling ref at the root"
+assert_eq '["1.2.0","dev"]' "$(value matrix "${out}" | jq -c '[.include[].version]')" "main-as-latest keeps the tag version"
+assert_eq '"1.2.0"' "$(value versions "${out}" | jq -c '.[0].version')" "main-as-latest versions"
+
+out="$("${script}" "${SCRATCH}/plain.yml" "" "true")"
+assert_eq '["no-release"]' "$(value matrix "${out}" | jq -c '[.include[].profile]')" "main-as-latest before the first tag"
+
+status=0
+err="$("${script}" "${SCRATCH}/plain.yml" "1.2.0" "yes" 2>&1 >/dev/null)" || status=$?
+assert_status 1 "${status}" "main-as-latest not a boolean"
+assert_contains "${err}" "main-as-latest must be true or false; got yes" "main-as-latest message"
+
 printf 'website:\n  site-url: &site-url https://m.canouil.dev/pkg\n' >"${SCRATCH}/anchor.yml"
 out="$("${script}" "${SCRATCH}/anchor.yml" "1.2.0")"
 assert_eq '"https://m.canouil.dev/pkg/"' "$(value versions "${out}" | jq -c '.[0].url')" "anchored site-url"

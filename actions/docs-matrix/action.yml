@@ -6,6 +6,10 @@ inputs:
     description: "Path to the Quarto project configuration."
     required: false
     default: "docs/_quarto.yml"
+  main-as-latest:
+    description: "Render the release site from the checked-out commit, labelled with the latest tag's version."
+    required: false
+    default: "false"
 
 outputs:
   tag:
@@ -26,8 +30,9 @@ runs:
       shell: bash
       env:
         QUARTO_YML: ${{ inputs.quarto-yml }}
+        MAIN_AS_LATEST: ${{ inputs.main-as-latest }}
       run: |
         set -euo pipefail
         tag="$(git tag -l --sort=-v:refname '[0-9]*' | head -n 1)"
         echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-        "${GITHUB_ACTION_PATH}/docs-matrix.sh" "${QUARTO_YML}" "${tag}" >> "${GITHUB_OUTPUT}"
+        "${GITHUB_ACTION_PATH}/docs-matrix.sh" "${QUARTO_YML}" "${tag}" "${MAIN_AS_LATEST}" >> "${GITHUB_OUTPUT}"

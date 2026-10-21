@@ -92,6 +92,13 @@ The deploy writes `versions.json` at the site root, which a version switcher can
 | `needs-lua` | boolean | `false` | Installs Lua 5.4 for pre-render scripts and the development archive. |
 | `figure-cache` | string | `""` | The typst-render cache to restore and save, such as `docs/.quarto/typst-render`. |
 | `dev-archive` | boolean | `false` | Writes a dated `tools/package.sh archive` into the development site. |
+| `main-as-latest` | boolean | `false` | Renders the root from the default branch instead of the latest tag, still labelled with the tag's version. |
+
+`main-as-latest` is for a change that touches the docs and not the package, such as a typo, a new guide page or a social card.
+The root shows it straight away, without a release.
+The run fails unless it runs on the default branch with an empty `ref`, so the root only ever shows what has landed.
+Before the first tag it changes nothing, because the root already renders the calling ref.
+It doesn't check the package sources against the tag, so a library change already on the default branch would show on the root under the old version number.
 
 Here's a minimal caller:
 
@@ -109,6 +116,12 @@ on:
       ref:
         type: string
         default: ""
+  workflow_dispatch:
+    inputs:
+      main-as-latest:
+        type: boolean
+        description: "Build the latest-version site from main, keeping the latest tag's version number"
+        default: false
 
 permissions:
   contents: read
@@ -126,11 +139,13 @@ jobs:
       id-token: write
     with:
       ref: ${{ inputs.ref }}
+      main-as-latest: ${{ inputs.main-as-latest || false }}
 ```
 
 GitHub Pages takes one deployment at a time, so every deploy shares the `pages` group.
 A push cancels the older run, because the newer one renders the same site from fresher sources.
 The `workflow_call` trigger lets the Publish workflow deploy the docs once it has tagged a release.
+The `workflow_dispatch` trigger lets you republish the root from the default branch with `main-as-latest`.
 
 ## Release
 

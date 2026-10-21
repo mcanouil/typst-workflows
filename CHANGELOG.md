@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- fix: The `days` input of the lock-closed workflow is a string, so a caller can pass a dispatched number input to it. (#20)
+
 ## 2.5.1 (2026-10-21)
 
 - fix: The lock-closed workflow asks for no repository permission at the top level, so a caller that grants only issues and pull requests can call it. (#19)

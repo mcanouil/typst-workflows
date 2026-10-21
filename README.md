@@ -340,6 +340,44 @@ jobs:
           file: src/deps.typ
 ```
 
+## Lock closed
+
+`.github/workflows/lock-closed.yml` locks closed issues and pull requests that had no activity for `days` days, with [lock-threads](https://github.com/dessant/lock-threads).
+A comment on old work then goes to a new issue, not to a closed thread.
+The job uses the default token, and it searches only unlocked threads.
+The caller sets the schedule.
+
+| Input | Type | Default | Description |
+| --- | --- | --- | --- |
+| `days` | number | `7` | Days with no activity before a closed thread is locked. |
+
+```yaml
+name: Lock closed
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Lock closed threads with no activity for more than this many days."
+        type: number
+        required: false
+        default: 7
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    uses: mcanouil/typst-workflows/.github/workflows/lock-closed.yml@v2
+    permissions:
+      issues: write
+      pull-requests: write
+    with:
+      days: ${{ inputs.days || 7 }}
+```
+
 ## Release runbook
 
 Before the first release, set up these once in each package repository:

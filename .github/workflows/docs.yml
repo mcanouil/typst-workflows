@@ -44,9 +44,10 @@ jobs:
       versions: ${{ steps.matrix.outputs.versions }}
     steps:
       # The root is what readers of the release see, so it renders only what has
-      # landed on the default branch.
+      # landed on the default branch. A pull request deploys nothing, so it is
+      # left to build.
       - name: Refuse main-as-latest off the default branch
-        if: ${{ inputs.main-as-latest && (inputs.ref != '' || github.ref_name != github.event.repository.default_branch) }}
+        if: ${{ inputs.main-as-latest && github.event_name != 'pull_request' && (inputs.ref != '' || github.ref_name != github.event.repository.default_branch) }}
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

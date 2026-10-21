@@ -99,6 +99,7 @@ The root shows it straight away, without a release.
 The run fails unless it runs on the default branch with an empty `ref`, so the root only ever shows what has landed.
 Before the first tag it changes nothing, because the root already renders the calling ref.
 It doesn't check the package sources against the tag, so a library change already on the default branch would show on the root under the old version number.
+With the dispatch-only caller below, the next push to the default branch renders the tag at the root again, so dispatch once more after that push if the docs change should stay.
 
 Here's a minimal caller:
 

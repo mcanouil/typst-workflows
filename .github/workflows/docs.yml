@@ -45,23 +45,16 @@ jobs:
     steps:
       # The root is what readers of the release see, so it renders only what has
       # landed on the default branch.
-      - name: Check the main-as-latest run
-        if: ${{ inputs.main-as-latest }}
+      - name: Refuse main-as-latest off the default branch
+        if: ${{ inputs.main-as-latest && (inputs.ref != '' || github.ref_name != github.event.repository.default_branch) }}
         shell: bash
         env:
-          INPUT_REF: ${{ inputs.ref }}
-          RUN_REF: ${{ github.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_REF: ${{ inputs.ref }}
         run: |
-          set -euo pipefail
-          if [[ -n "${INPUT_REF}" ]]; then
-            echo "::error::main-as-latest renders the default branch; got ref ${INPUT_REF}. Leave ref empty."
-            exit 1
-          fi
-          if [[ "${RUN_REF}" != "refs/heads/${DEFAULT_BRANCH}" ]]; then
-            echo "::error::main-as-latest runs on the default branch, ${DEFAULT_BRANCH}; got ${RUN_REF}. Run the workflow from ${DEFAULT_BRANCH}."
-            exit 1
-          fi
+          echo "::error::main-as-latest renders ${DEFAULT_BRANCH} with an empty ref, not ${REF_NAME}${INPUT_REF:+ with ref ${INPUT_REF}}. Dispatch it from ${DEFAULT_BRANCH}."
+          exit 1
 
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -247,11 +240,12 @@ jobs:
           {
             echo "## Documentation deploy"
             echo ""
-            if [[ -n "${TAG}" && "${MAIN_AS_LATEST}" == "true" ]]; then
-              echo "- Root: \`${TAG}\`, built from ${DEFAULT_BRANCH} at \`${SHA}\`, at ${PAGE_URL}"
-              echo "- Development: ${PAGE_URL}dev/"
-            elif [[ -n "${TAG}" ]]; then
-              echo "- Root: \`${TAG}\` at ${PAGE_URL}"
+            if [[ -n "${TAG}" ]]; then
+              source_note=""
+              if [[ "${MAIN_AS_LATEST}" == "true" ]]; then
+                source_note=", built from ${DEFAULT_BRANCH} at \`${SHA}\`,"
+              fi
+              echo "- Root: \`${TAG}\`${source_note} at ${PAGE_URL}"
               echo "- Development: ${PAGE_URL}dev/"
             else
               echo "- Root: development version, no tag yet, at ${PAGE_URL}"

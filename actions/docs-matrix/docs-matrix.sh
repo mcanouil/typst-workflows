@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # Prints the docs render matrix and the versions.json payload, as GITHUB_OUTPUT
 # lines, from the site URL in a Quarto configuration and the latest version tag.
-# With main-as-latest set to true, the release site renders the calling ref
-# rather than the tag, still labelled with the tag's version, so a change to
-# the docs alone reaches the site root without a release.
 set -euo pipefail
 
 usage='usage: docs-matrix.sh <quarto-yml> [latest-tag] [main-as-latest]'

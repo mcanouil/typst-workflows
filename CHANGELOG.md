@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- feat: Add the `main-as-latest` input to the docs workflow, which renders the site root from the default branch under the latest tag's version, so a docs-only change is published without a release.
+- feat: Add the `main-as-latest` input to the docs workflow. It renders the site root from the default branch under the latest tag's version, so a docs-only change needs no release.
 
 ## 2.5.2 (2026-10-21)
 

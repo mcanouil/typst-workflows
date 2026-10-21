@@ -15,7 +15,8 @@ on:
 permissions:
   contents: read
 
-# A dispatch that overlaps the schedule would lock the same threads twice.
+# A dispatch that overlaps the schedule waits for it, so two runs never search
+# and lock the same threads at once.
 concurrency:
   group: lock-closed-${{ github.ref }}
   cancel-in-progress: false

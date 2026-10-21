@@ -12,8 +12,9 @@ on:
         required: false
         default: 7
 
-permissions:
-  contents: read
+# The job reads nothing from the repository. A caller grants issues and pull
+# requests alone, and a called workflow cannot ask for more than its caller.
+permissions: {}
 
 # A dispatch that overlaps the schedule waits for it, so two runs never search
 # and lock the same threads at once.

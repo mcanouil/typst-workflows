@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- fix: The lock-closed workflow asks for no repository permission at the top level, so a caller that grants only issues and pull requests can call it. (#19)
+
 ## 2.5.0 (2026-10-21)
 
 - feat: Add the lock-closed reusable workflow, which locks closed issues and pull requests after a number of days with no activity. (#18)

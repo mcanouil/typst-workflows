@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 2.5.0 (2026-10-21)
+
 - feat: Add the lock-closed reusable workflow, which locks closed issues and pull requests after a number of days with no activity. (#18)
 
 ## 2.4.1 (2026-10-20)

@@ -304,6 +304,22 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           section-heading: ""
 
+      # The release carries the changelog section under a heading, then the notes
+      # GitHub generates: the merged pull requests and the Full Changelog link.
+      # The Typst Universe pull request keeps the bare section read above. It
+      # runs before the push, so a failure leaves the branch as it was; the
+      # release commit holds no pull request, so the dispatched commit gives the
+      # same generated notes.
+      - name: Compose the release body
+        id: release-notes
+        uses: mcanouil/release-actions/notes@v1
+        with:
+          notes-file: ${{ steps.bump.outputs.notes-file }}
+          version: ${{ needs.plan.outputs.version }}
+          tag: ${{ needs.plan.outputs.version }}
+          generate-notes: true
+          token: ${{ steps.token.outputs.token }}
+
       - name: Build the package archives
         shell: bash
         run: |
@@ -347,7 +363,7 @@ jobs:
         uses: mcanouil/release-actions/release@v1
         with:
           version: ${{ needs.plan.outputs.version }}
-          body-file: ${{ steps.notes.outputs.body-file }}
+          body-file: ${{ steps.release-notes.outputs.body-file }}
           title: "{version}"
           target: ${{ steps.land.outputs.sha || github.sha }}
           draft: true
@@ -365,7 +381,7 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           name: ${{ needs.plan.outputs.name }}
           target: ${{ steps.land.outputs.sha || github.sha }}
-          notes-file: ${{ steps.notes.outputs.body-file }}
+          notes-file: ${{ steps.release-notes.outputs.body-file }}
           assets-dir: ${{ runner.temp }}/assets
           token: ${{ steps.token.outputs.token }}
 

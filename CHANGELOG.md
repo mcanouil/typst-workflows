@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- feat: The draft GitHub Release of a package puts its changelog section under a `## Changelog` heading and adds the notes that GitHub generates, with the merged pull requests and the Full Changelog link. The Typst Universe pull request keeps the bare section. (#22)
+
 ## 2.6.0 (2026-10-21)
 
 - feat: Add the `main-as-latest` input to the docs workflow. It renders the site root from the default branch under the latest tag's version, so a docs-only change needs no release. (#21)

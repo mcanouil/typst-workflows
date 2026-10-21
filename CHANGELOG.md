@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 2.5.1 (2026-10-21)
+
 - fix: The lock-closed workflow asks for no repository permission at the top level, so a caller that grants only issues and pull requests can call it. (#19)
 
 ## 2.5.0 (2026-10-21)

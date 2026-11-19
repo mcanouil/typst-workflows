@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- fix: The Typst Universe pull request links the changelog of the package, in place of the pasted section whose references pointed to typst/packages. The `notes` input of `universe-submit` becomes `changelog`. (#23)
+
 ## 2.7.0 (2026-10-21)
 
 - feat: The draft GitHub Release of a package puts its changelog section under a `## Changelog` heading and adds the notes that GitHub generates, with the merged pull requests and the Full Changelog link. The Typst Universe pull request keeps the bare section. (#22)

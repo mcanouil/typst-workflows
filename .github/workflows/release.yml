@@ -306,8 +306,7 @@ jobs:
 
       # The release carries the changelog section under a heading, then the notes
       # GitHub generates: the merged pull requests and the Full Changelog link.
-      # The Typst Universe pull request keeps the bare section read above. It
-      # runs before the push, so a failure leaves the branch as it was; the
+      # This step runs before the push, so a failure leaves the branch as it was; the
       # release commit holds no pull request, so the dispatched commit gives the
       # same generated notes.
       - name: Compose the release body
@@ -331,11 +330,6 @@ jobs:
               exit 1
             fi
           done
-          # The universe job reads the notes from the artefact, for the body of
-          # the pull request.
-          cp "${NOTES}" "${RUNNER_TEMP}/assets/notes.md"
-        env:
-          NOTES: ${{ steps.notes.outputs.body-file }}
 
       - name: Upload the archives
         uses: actions/upload-artifact@v7
@@ -435,8 +429,8 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
 
-      # The notes, and in a dry run the archives too. A real run then replaces
-      # the archive with the one in the draft.
+      # The archives in a dry run. A real run then replaces the archive with the
+      # one in the draft.
       - name: Download the release artefact
         uses: actions/download-artifact@v8
         with:
@@ -508,7 +502,7 @@ jobs:
           fork: ${{ github.repository_owner }}/${{ inputs.universe-fork }}
           fork-token: ${{ steps.app-token.outputs.token }}
           pr-token: ${{ secrets.UNIVERSE_TOKEN }}
-          notes: ${{ runner.temp }}/assets/notes.md
+          changelog: CHANGELOG.md
           dry-run: ${{ inputs.dry-run }}
 
       - name: Summary

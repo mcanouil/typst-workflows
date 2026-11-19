@@ -15,8 +15,8 @@ inputs:
     description: "The package paragraph for the pull request, with a Name: line for a new package."
     required: false
     default: ".github/universe.md"
-  notes:
-    description: "Path to the release notes, which the pull request body lists as the changes. Empty leaves them out."
+  changelog:
+    description: "Path of the changelog file in the package repository, which the pull request body links on the main branch. Empty leaves the link out."
     required: false
     default: ""
   fork:
@@ -66,15 +66,15 @@ runs:
         VERSION: ${{ inputs.version }}
         ARCHIVE: ${{ inputs.archive }}
         DESCRIPTION: ${{ inputs.description }}
-        NOTES: ${{ inputs.notes }}
+        CHANGELOG: ${{ inputs.changelog }}
         FORK: ${{ inputs.fork }}
         DRY_RUN: ${{ inputs.dry-run }}
       run: |
         set -euo pipefail
         args=(--name "${NAME}" --version "${VERSION}" --archive "${ARCHIVE}"
           --description "${DESCRIPTION}" --fork "${FORK}" --sync)
-        if [[ -n "${NOTES}" ]]; then
-          args+=(--notes "${NOTES}")
+        if [[ -n "${CHANGELOG}" ]]; then
+          args+=(--changelog "${CHANGELOG}")
         fi
         if [[ "${DRY_RUN}" == "true" ]]; then
           args+=(--dry-run)

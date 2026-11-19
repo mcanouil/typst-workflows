@@ -6,10 +6,11 @@
 # Usage:
 #   submit.sh --name <name> --version <x.y.z> --archive <name-x.y.z.tar.gz>
 #             --description <universe.md> --fork <owner/repo>
-#             [--notes <file>] [--pr=<number>] [--sync] [--dry-run]
+#             [--changelog <file>] [--pr=<number>] [--sync] [--dry-run]
 #
-#   --notes    The release notes, which the pull request body lists as the
-#              changes in this version.
+#   --changelog  The changelog file in the package repository. The pull request
+#              body links it on the main branch. Pasted notes would carry bare
+#              references that GitHub links to typst/packages.
 #   --sync     Bring the main branch of the fork up to typst/packages main
 #              first, so that the push does not need commits the fork lacks.
 #   --pr=<n>   Reuse the head branch of the open pull request <n> and edit it.
@@ -47,21 +48,21 @@ name=""
 version=""
 archive=""
 description=""
-notes=""
+changelog=""
 fork=""
 pr=""
 sync=0
 dry_run=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-  --name | --version | --archive | --description | --notes | --fork)
+  --name | --version | --archive | --description | --changelog | --fork)
     [[ $# -ge 2 && -n "$2" ]] || die "$1 needs a value."
     case "$1" in
     --name) name="$2" ;;
     --version) version="$2" ;;
     --archive) archive="$2" ;;
     --description) description="$2" ;;
-    --notes) notes="$2" ;;
+    --changelog) changelog="$2" ;;
     --fork) fork="$2" ;;
     esac
     shift 2
@@ -94,7 +95,6 @@ done
 [[ -z "${pr}" || "${pr}" =~ ^[0-9]+$ ]] || die "--pr must be a pull request number; got '${pr}'."
 [[ -f "${archive}" ]] || die "${archive} does not exist."
 [[ -f "${description}" ]] || die "${description} does not exist. Write the package paragraph for the pull request there."
-[[ -z "${notes}" || -f "${notes}" ]] || die "${notes} does not exist."
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
@@ -182,9 +182,8 @@ body="${tmp}/body.md"
   printf '\nDescription: %s\n\n' "${summary}"
   printf -- '- Repository: %s\n' "${repository}"
   printf -- '- Homepage: %s\n' "${homepage}"
-  if [[ -n "${notes}" ]]; then
-    printf '\nChanges in %s:\n\n' "${version}"
-    cat "${notes}"
+  if [[ -n "${changelog}" ]]; then
+    printf '\nChanges in %s: %s/blob/main/%s\n' "${version}" "${repository}" "${changelog}"
   fi
   if [[ ${update} -eq 0 ]]; then
     printf '\nI have read and followed the submission guidelines and, in particular, I\n'

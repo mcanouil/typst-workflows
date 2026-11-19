@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 2.8.0 (2026-11-19)
+
 - fix: The Typst Universe pull request links the changelog of the package, in place of the pasted section whose references pointed to typst/packages. The `notes` input of `universe-submit` becomes `changelog`. (#23)
 
 ## 2.7.0 (2026-10-21)

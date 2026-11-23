@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 2.9.0 (2026-11-23)
+
 - feat: Add the `quarto-version` input to the docs workflow. It defaults to `auto`, which installs the Quarto pre-release when an extension of the site needs a version newer than the latest stable one.
 
 ## 2.8.1 (2026-11-20)

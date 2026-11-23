@@ -14,6 +14,9 @@ on:
       needs-lua:
         type: boolean
         default: false
+      quarto-version:
+        type: string
+        default: auto
       figure-cache:
         type: string
         default: ""
@@ -124,10 +127,16 @@ jobs:
           restore-keys: |
             typst-render-v1-${{ matrix.version }}-${{ steps.typst.outputs.version }}-
 
+      - name: Resolve the Quarto version
+        id: quarto
+        uses: mcanouil/typst-workflows/actions/resolve-quarto@v2
+        with:
+          version: ${{ inputs.quarto-version }}
+
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
-          version: release
+          version: ${{ steps.quarto.outputs.version }}
 
       - name: Set up Lua
         if: ${{ inputs.needs-lua }}

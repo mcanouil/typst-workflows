@@ -90,6 +90,7 @@ The deploy writes `versions.json` at the site root, which a version switcher can
 | --- | --- | --- | --- |
 | `ref` | string | `""` | The commit or ref to resolve the tag from and to render as `dev`. Empty means the calling ref. |
 | `needs-lua` | boolean | `false` | Installs Lua 5.4 for pre-render scripts and the development archive. |
+| `quarto-version` | string | `auto` | The Quarto to install: a version, `release`, `pre-release`, or `auto`. With `auto`, the pre-release is installed when an extension under `docs/_extensions` requires a Quarto newer than the latest stable release, and the stable release otherwise. |
 | `figure-cache` | string | `""` | The typst-render cache to restore and save, such as `docs/.quarto/typst-render`. |
 | `dev-archive` | boolean | `false` | Writes a dated `tools/package.sh archive` into the development site. |
 | `main-as-latest` | boolean | `false` | Renders the root from the default branch instead of the latest tag, still labelled with the tag's version. |
@@ -433,6 +434,7 @@ The workflows are built from these composite actions, which you can also use on 
 - `actions/lint-shell` installs shfmt and runs shellcheck and shfmt.
 - `actions/setup-package-check` installs `typst-package-check`, cached by the upstream revision.
 - `actions/docs-matrix` builds the docs render matrix and the `versions.json` list from the latest tag and `site-url`.
+- `actions/resolve-quarto` picks the Quarto version for the docs workflow: the one requested, or the pre-release when an extension needs a Quarto newer than the latest stable release.
 - `actions/find-release` finds the release of a version, draft or published, and the id of one of its assets.
 - `actions/update-draft` moves an existing draft release to a commit, replaces its notes and replaces its two archives.
 - `actions/fill-package-cache` compiles a package and its template entrypoint, so that `typst-package-check` finds their dependencies in the Typst cache.

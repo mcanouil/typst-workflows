@@ -1,0 +1,32 @@
+name: Resolve the Quarto version
+description: Choose the Quarto version to install, from the one requested or from what the extensions of the site require.
+
+inputs:
+  version:
+    description: "A Quarto version, `release`, `pre-release`, or `auto`. With `auto`, the pre-release is chosen when an extension requires a Quarto newer than the latest stable release."
+    required: false
+    default: "auto"
+  extensions-dir:
+    description: "Path to the extensions of the site."
+    required: false
+    default: "docs/_extensions"
+
+outputs:
+  version:
+    description: "The value to pass to the Quarto setup action."
+    value: ${{ steps.resolve.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the version
+      id: resolve
+      shell: bash
+      env:
+        REQUESTED: ${{ inputs.version }}
+        EXTENSIONS_DIR: ${{ inputs.extensions-dir }}
+      run: |
+        set -euo pipefail
+        version="$("${GITHUB_ACTION_PATH}/resolve.sh" "${REQUESTED}" "${EXTENSIONS_DIR}")"
+        echo "Quarto version: ${version}"
+        echo "version=${version}" >> "${GITHUB_OUTPUT}"

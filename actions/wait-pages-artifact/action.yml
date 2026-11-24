@@ -1,0 +1,24 @@
+name: Wait for the Pages artefact
+description: >-
+  Wait until the artefact list of this run names the Pages artefact.
+  deploy-pages looks the artefact up once, with no retry, and the list can lag
+  behind the upload (actions/deploy-pages#451). This action reads the same list
+  with the same runtime token, so it needs no extra permission.
+
+inputs:
+  name:
+    description: "The name of the Pages artefact."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Wait for the Pages artefact
+      uses: actions/github-script@v9
+      env:
+        ARTIFACT_NAME: ${{ inputs.name }}
+        WAIT_SCRIPT: ${{ github.action_path }}/wait.js
+      with:
+        script: |
+          const waitForArtifact = require(process.env.WAIT_SCRIPT);
+          await waitForArtifact({ core, name: process.env.ARTIFACT_NAME });

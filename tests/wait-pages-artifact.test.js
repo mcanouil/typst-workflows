@@ -13,7 +13,7 @@ const tokenWith = (scp) => `header.${Buffer.from(JSON.stringify({ scp })).toStri
 const goodToken = tokenWith(`Actions.Example Actions.Results:${runId}:${jobId}`);
 const listed = (...names) => ({ body: { artifacts: names.map((name) => ({ name })) } });
 
-async function run({ responses, token = goodToken }) {
+async function run({ responses, token = goodToken, env }) {
   const requests = [];
   const server = createServer((req, res) => {
     let data = '';
@@ -23,6 +23,10 @@ async function run({ responses, token = goodToken }) {
     req.on('end', () => {
       requests.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(data) });
       const next = responses[Math.min(requests.length - 1, responses.length - 1)];
+      if (next.drop) {
+        req.socket.destroy();
+        return;
+      }
       res.writeHead(next.status ?? 200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(next.body ?? {}));
     });
@@ -39,7 +43,7 @@ async function run({ responses, token = goodToken }) {
     await waitForArtifact({
       core,
       name: 'github-pages-2',
-      env: { ACTIONS_RUNTIME_TOKEN: token, ACTIONS_RESULTS_URL: `http://127.0.0.1:${server.address().port}/` },
+      env: env ?? { ACTIONS_RUNTIME_TOKEN: token, ACTIONS_RESULTS_URL: `http://127.0.0.1:${server.address().port}/` },
       sleep: async () => {
         result.sleeps++;
       },
@@ -80,4 +84,26 @@ test('fails without a request when the token has no results scope', async () => 
   const r = await run({ responses: [listed()], token: tokenWith('Actions.Example') });
   assert.equal(r.requests.length, 0);
   assert.match(r.failed, /no Actions.Results scope/);
+});
+
+test('counts a server error or rate limit as one more check', async () => {
+  const r = await run({ responses: [{ status: 503 }, { status: 429 }, listed('github-pages-2')] });
+  assert.equal(r.failed, null);
+  assert.equal(r.requests.length, 3);
+  assert.match(r.info.at(-1), /github-pages-2 is listed after 3 check/);
+});
+
+test('counts a dropped connection as one more check', async () => {
+  const r = await run({ responses: [{ drop: true }, listed('github-pages-2')] });
+  assert.equal(r.failed, null);
+  assert.equal(r.requests.length, 2);
+});
+
+test('fails with a clear message when the runtime variables are missing', async () => {
+  let r = await run({ responses: [listed()], env: { ACTIONS_RESULTS_URL: 'http://127.0.0.1:1/' } });
+  assert.match(r.failed, /ACTIONS_RUNTIME_TOKEN is not set/);
+  r = await run({ responses: [listed()], env: { ACTIONS_RUNTIME_TOKEN: goodToken } });
+  assert.match(r.failed, /ACTIONS_RESULTS_URL is not set/);
+  r = await run({ responses: [listed()], env: { ACTIONS_RUNTIME_TOKEN: 'not-a-jwt', ACTIONS_RESULTS_URL: 'http://127.0.0.1:1/' } });
+  assert.match(r.failed, /runtime token cannot be read/);
 });

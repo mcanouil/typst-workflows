@@ -235,6 +235,47 @@ jobs:
           name: github-pages-${{ github.run_attempt }}
           path: docs/_site
 
+      # deploy-pages looks for the artefact once, with no retry, and the
+      # artefact list can lag behind the upload (actions/deploy-pages#451).
+      # This step reads the same list with the same token until the artefact
+      # is in it, so it needs no permission that callers do not grant already.
+      - name: Wait for the Pages artefact
+        uses: actions/github-script@v9
+        env:
+          ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
+        with:
+          script: |
+            const name = process.env.ARTIFACT_NAME;
+            const token = process.env.ACTIONS_RUNTIME_TOKEN;
+            const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+            const scope = (claims.scp ?? '').split(' ').find((s) => s.startsWith('Actions.Results:'));
+            if (!scope) {
+              core.setFailed('The runtime token has no Actions.Results scope, so the artefact list cannot be read.');
+              return;
+            }
+            const [, runId, jobId] = scope.split(':');
+            const url = new URL('/twirp/github.actions.results.api.v1.ArtifactService/ListArtifacts', process.env.ACTIONS_RESULTS_URL);
+            const body = JSON.stringify({ workflow_run_backend_id: runId, workflow_job_run_backend_id: jobId });
+            const checks = 30;
+            for (let check = 1; check <= checks; check++) {
+              const response = await fetch(url, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body,
+              });
+              if (!response.ok) {
+                core.setFailed(`Listing the artefacts failed with HTTP ${response.status}: ${await response.text()}`);
+                return;
+              }
+              const { artifacts = [] } = await response.json();
+              if (artifacts.some((artifact) => artifact.name === name)) {
+                core.info(`${name} is listed after ${check} check(s).`);
+                return;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+            }
+            core.setFailed(`${name} is still not listed after ${checks} checks. Re-run the job.`);
+
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v5

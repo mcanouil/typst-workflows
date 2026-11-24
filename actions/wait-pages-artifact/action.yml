@@ -3,7 +3,8 @@ description: >-
   Wait until the artefact list of this run names the Pages artefact.
   deploy-pages looks the artefact up once, with no retry, and the list can lag
   behind the upload (actions/deploy-pages#451). This action reads the same list
-  with the same runtime token, so it needs no extra permission.
+  with the same runtime token, so it needs no extra permission. If the list
+  cannot be read, it gives a warning and lets deploy-pages run.
 
 inputs:
   name:

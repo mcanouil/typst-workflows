@@ -32,12 +32,15 @@ async function run({ responses, token = goodToken, env }) {
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const result = { failed: null, info: [], sleeps: 0 };
+  const result = { failed: null, warned: null, info: [], sleeps: 0 };
   const core = {
     setFailed: (message) => {
       result.failed = message;
     },
     info: (message) => result.info.push(message),
+    warning: (message) => {
+      result.warned = message;
+    },
   };
   try {
     await waitForArtifact({
@@ -74,16 +77,18 @@ test('fails after the last check without a final wait', async () => {
   assert.match(r.failed, /github-pages-2 is still not listed after 30 checks/);
 });
 
-test('fails at once on an HTTP error', async () => {
-  const r = await run({ responses: [{ status: 401, body: { msg: 'no' } }] });
+test('warns and stops at once on an HTTP error that a retry cannot correct', async () => {
+  const r = await run({ responses: [{ status: 404, body: { msg: 'no' } }] });
   assert.equal(r.requests.length, 1);
-  assert.match(r.failed, /HTTP 401/);
+  assert.equal(r.failed, null);
+  assert.match(r.warned, /HTTP 404/);
 });
 
-test('fails without a request when the token has no results scope', async () => {
+test('warns without a request when the token has no results scope', async () => {
   const r = await run({ responses: [listed()], token: tokenWith('Actions.Example') });
   assert.equal(r.requests.length, 0);
-  assert.match(r.failed, /no Actions.Results scope/);
+  assert.equal(r.failed, null);
+  assert.match(r.warned, /no Actions.Results scope/);
 });
 
 test('counts a server error or rate limit as one more check', async () => {
@@ -99,20 +104,22 @@ test('counts a dropped connection as one more check', async () => {
   assert.equal(r.requests.length, 2);
 });
 
-test('fails with a clear message when the runtime variables are missing', async () => {
+test('warns with a clear message when the runtime variables are missing', async () => {
   let r = await run({ responses: [listed()], env: { ACTIONS_RESULTS_URL: 'http://127.0.0.1:1/' } });
-  assert.match(r.failed, /ACTIONS_RUNTIME_TOKEN is not set/);
+  assert.match(r.warned, /ACTIONS_RUNTIME_TOKEN is not set/);
   r = await run({ responses: [listed()], env: { ACTIONS_RUNTIME_TOKEN: goodToken } });
-  assert.match(r.failed, /ACTIONS_RESULTS_URL is not set/);
+  assert.match(r.warned, /ACTIONS_RESULTS_URL is not set/);
   r = await run({ responses: [listed()], env: { ACTIONS_RUNTIME_TOKEN: 'not-a-jwt', ACTIONS_RESULTS_URL: 'http://127.0.0.1:1/' } });
-  assert.match(r.failed, /runtime token cannot be read/);
+  assert.match(r.warned, /runtime token cannot be read/);
+  assert.equal(r.failed, null);
 });
 
-test('says the list cannot be read when no check reads it', async () => {
+test('warns that the list cannot be read when no check reads it', async () => {
   const r = await run({ responses: [{ status: 503, body: { msg: 'down' } }] });
   assert.equal(r.requests.length, 30);
-  assert.match(r.failed, /artefact list could not be read in 30 checks/);
-  assert.match(r.failed, /HTTP 503/);
+  assert.equal(r.failed, null);
+  assert.match(r.warned, /artefact list could not be read in 30 checks/);
+  assert.match(r.warned, /HTTP 503/);
 });
 
 test('names the cause of a dropped connection', async () => {

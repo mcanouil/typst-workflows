@@ -50,14 +50,14 @@ module.exports = async function waitForArtifact({
 }) {
   for (const variable of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL']) {
     if (!env[variable]) {
-      core.setFailed(`${variable} is not set. Run this action as an action step, not inside a run step.`);
+      core.warning(`${variable} is not set, so the wait is skipped. Run this action as an action step, not inside a run step.`);
       return;
     }
   }
   const token = env.ACTIONS_RUNTIME_TOKEN;
   const { ids, error } = backendIds(token);
   if (error) {
-    core.setFailed(error);
+    core.warning(`${error} The wait is skipped.`);
     return;
   }
   const url = new URL(LIST_ARTIFACTS, env.ACTIONS_RESULTS_URL);
@@ -66,7 +66,7 @@ module.exports = async function waitForArtifact({
   for (let check = 1; check <= checks; check++) {
     const result = await listArtifacts(url, token, ids);
     if (result.error) {
-      core.setFailed(result.error);
+      core.warning(`${result.error} The wait is skipped.`);
       return;
     }
     if (result.retry) {
@@ -84,7 +84,7 @@ module.exports = async function waitForArtifact({
     }
   }
   if (!listRead) {
-    core.setFailed(`The artefact list could not be read in ${checks} checks (last error: ${lastRetry}). Re-run the job.`);
+    core.warning(`The artefact list could not be read in ${checks} checks (last error: ${lastRetry}). The wait is skipped.`);
     return;
   }
   core.setFailed(`${name} is still not listed after ${checks} checks. Re-run the job.`);

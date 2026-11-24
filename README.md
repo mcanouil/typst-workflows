@@ -441,7 +441,7 @@ The workflows are built from these composite actions, which you can also use on 
 - `actions/universe-served` asks `packages.typst.org` whether it serves a package version.
 - `actions/universe-submit` checks the pull request token, then syncs the fork, pushes the package and opens or reuses the pull request on `typst/packages`.
 - `actions/bump-pins` moves the `compiler` key of `typst.toml` and the listed `@preview` imports to their latest GitHub releases.
-- `actions/wait-pages-artifact` waits until the artefact list of the run shows the Pages artefact, because `deploy-pages` looks for the artefact only one time.
+- `actions/wait-pages-artifact` waits until the artefact list of the run shows the Pages artefact, because `deploy-pages` looks for the artefact only one time. If the list cannot be read, it gives a warning and lets `deploy-pages` run.
 
 ## Versioning
 

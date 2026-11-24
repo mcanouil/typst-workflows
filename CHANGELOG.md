@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 2.9.1 (2026-11-24)
+
 - fix: The Pages deploy now waits until its artefact shows up in the artefact list, so it no longer fails when that list lags behind the upload. (#26)
 
 ## 2.9.0 (2026-11-23)

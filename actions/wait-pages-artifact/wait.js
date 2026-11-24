@@ -35,7 +35,8 @@ async function listArtifacts(url, token, ids) {
     const detail = `HTTP ${response.status}: ${await response.text()}`;
     return isRetryable(response.status) ? { retry: detail } : { error: `Listing the artefacts failed with ${detail}` };
   } catch (error) {
-    return { retry: error.message };
+    const cause = error.cause?.code ?? error.cause?.message;
+    return { retry: cause ? `${error.message}: ${cause}` : error.message };
   }
 }
 
@@ -60,6 +61,8 @@ module.exports = async function waitForArtifact({
     return;
   }
   const url = new URL(LIST_ARTIFACTS, env.ACTIONS_RESULTS_URL);
+  let listRead = false;
+  let lastRetry = '';
   for (let check = 1; check <= checks; check++) {
     const result = await listArtifacts(url, token, ids);
     if (result.error) {
@@ -67,14 +70,22 @@ module.exports = async function waitForArtifact({
       return;
     }
     if (result.retry) {
+      lastRetry = result.retry;
       core.info(`Check ${check} could not list the artefacts (${result.retry}).`);
-    } else if (result.artifacts.some((artifact) => artifact.name === name)) {
-      core.info(`${name} is listed after ${check} check(s).`);
-      return;
+    } else {
+      listRead = true;
+      if (result.artifacts.some((artifact) => artifact.name === name)) {
+        core.info(`${name} is listed after ${check} check(s).`);
+        return;
+      }
     }
     if (check < checks) {
       await sleep(intervalMs);
     }
+  }
+  if (!listRead) {
+    core.setFailed(`The artefact list could not be read in ${checks} checks (last error: ${lastRetry}). Re-run the job.`);
+    return;
   }
   core.setFailed(`${name} is still not listed after ${checks} checks. Re-run the job.`);
 };

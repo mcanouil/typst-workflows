@@ -107,3 +107,15 @@ test('fails with a clear message when the runtime variables are missing', async 
   r = await run({ responses: [listed()], env: { ACTIONS_RUNTIME_TOKEN: 'not-a-jwt', ACTIONS_RESULTS_URL: 'http://127.0.0.1:1/' } });
   assert.match(r.failed, /runtime token cannot be read/);
 });
+
+test('says the list cannot be read when no check reads it', async () => {
+  const r = await run({ responses: [{ status: 503, body: { msg: 'down' } }] });
+  assert.equal(r.requests.length, 30);
+  assert.match(r.failed, /artefact list could not be read in 30 checks/);
+  assert.match(r.failed, /HTTP 503/);
+});
+
+test('names the cause of a dropped connection', async () => {
+  const r = await run({ responses: [{ drop: true }, listed('github-pages-2')] });
+  assert.match(r.info[0], /fetch failed: (ECONNRESET|UND_ERR_SOCKET)/);
+});
